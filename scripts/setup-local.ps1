@@ -28,28 +28,27 @@ Set-Location $projectRoot
 
 $envPath = Join-Path $projectRoot ".env.local"
 
-if (-not (Test-Path $envPath)) {
-    Write-Host "Primeira configuracao do Supabase." -ForegroundColor Cyan
-    Write-Host "Abra o projeto afiliado-ofertas no Supabase e copie a Publishable key." -ForegroundColor Gray
-    Write-Host ""
-
-    $publishableKey = Read-Host "Cole a Publishable key"
-    if ([string]::IsNullOrWhiteSpace($publishableKey)) {
-        Write-Host "Publishable key nao informada." -ForegroundColor Red
-        exit 1
-    }
-
-    $envContent = @"
+$envContent = @"
 NEXT_PUBLIC_SUPABASE_URL=https://flicyhbmovfvmvzoilzh.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$publishableKey
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_8rwFdzOqo0MIuJqi-qqNkg_OeZqvuJI
 MERCADO_LIVRE_ACCESS_TOKEN=
 ALLOW_DEMO_OFFERS=true
 "@
 
+if (-not (Test-Path $envPath)) {
     Set-Content -Path $envPath -Value $envContent -Encoding UTF8
-    Write-Host ".env.local criado com sucesso." -ForegroundColor Green
+    Write-Host ".env.local criado automaticamente com o Supabase afiliado-ofertas." -ForegroundColor Green
 } else {
-    Write-Host ".env.local ja configurado." -ForegroundColor Green
+    $currentEnv = Get-Content -Path $envPath -Raw
+    if ($currentEnv -notmatch "flicyhbmovfvmvzoilzh" -or $currentEnv -notmatch "sb_publishable_8rwFdzOqo0MIuJqi-qqNkg_OeZqvuJI") {
+        Write-Host ".env.local existente nao corresponde ao projeto afiliado-ofertas." -ForegroundColor Yellow
+        $backupPath = Join-Path $projectRoot ".env.local.backup"
+        Copy-Item -Path $envPath -Destination $backupPath -Force
+        Set-Content -Path $envPath -Value $envContent -Encoding UTF8
+        Write-Host "Configuracao atualizada. Backup salvo em .env.local.backup." -ForegroundColor Green
+    } else {
+        Write-Host ".env.local ja configurado para afiliado-ofertas." -ForegroundColor Green
+    }
 }
 
 Write-Host ""
