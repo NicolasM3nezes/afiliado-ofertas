@@ -1,9 +1,9 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "=========================================" -ForegroundColor Yellow
-Write-Host "  AFILIADO OFERTAS - AMBIENTE LOCAL" -ForegroundColor Yellow
-Write-Host "=========================================" -ForegroundColor Yellow
+Write-Host "=========================================" -ForegroundColor DarkYellow
+Write-Host "  AFILIADO OFERTAS - AMBIENTE LOCAL" -ForegroundColor DarkYellow
+Write-Host "=========================================" -ForegroundColor DarkYellow
 Write-Host ""
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
@@ -25,31 +25,44 @@ if ($nodeMajor -lt 22) {
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
-
 $envPath = Join-Path $projectRoot ".env.local"
+
+$currentEnv = ""
+$mlToken = ""
+$encryptionKey = ""
+
+if (Test-Path $envPath) {
+    $currentEnv = Get-Content -Path $envPath -Raw
+    if ($currentEnv -match '(?m)^MERCADO_LIVRE_ACCESS_TOKEN=(.*)$') {
+        $mlToken = $matches[1].Trim()
+    }
+    if ($currentEnv -match '(?m)^APP_ENCRYPTION_KEY=(.+)$') {
+        $encryptionKey = $matches[1].Trim()
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($encryptionKey)) {
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $rng.GetBytes($bytes)
+    $rng.Dispose()
+    $encryptionKey = ($bytes | ForEach-Object { $_.ToString("x2") }) -join ""
+    Write-Host "Chave local de criptografia criada." -ForegroundColor Green
+}
 
 $envContent = @"
 NEXT_PUBLIC_SUPABASE_URL=https://flicyhbmovfvmvzoilzh.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_8rwFdzOqo0MIuJqi-qqNkg_OeZqvuJI
-MERCADO_LIVRE_ACCESS_TOKEN=
+APP_ENCRYPTION_KEY=$encryptionKey
+MERCADO_LIVRE_ACCESS_TOKEN=$mlToken
 ALLOW_DEMO_OFFERS=true
 "@
 
-if (-not (Test-Path $envPath)) {
-    Set-Content -Path $envPath -Value $envContent -Encoding UTF8
-    Write-Host ".env.local criado automaticamente com o Supabase afiliado-ofertas." -ForegroundColor Green
-} else {
-    $currentEnv = Get-Content -Path $envPath -Raw
-    if ($currentEnv -notmatch "flicyhbmovfvmvzoilzh" -or $currentEnv -notmatch "sb_publishable_8rwFdzOqo0MIuJqi-qqNkg_OeZqvuJI") {
-        Write-Host ".env.local existente nao corresponde ao projeto afiliado-ofertas." -ForegroundColor Yellow
-        $backupPath = Join-Path $projectRoot ".env.local.backup"
-        Copy-Item -Path $envPath -Destination $backupPath -Force
-        Set-Content -Path $envPath -Value $envContent -Encoding UTF8
-        Write-Host "Configuracao atualizada. Backup salvo em .env.local.backup." -ForegroundColor Green
-    } else {
-        Write-Host ".env.local ja configurado para afiliado-ofertas." -ForegroundColor Green
-    }
+if (Test-Path $envPath) {
+    Copy-Item -Path $envPath -Destination (Join-Path $projectRoot ".env.local.backup") -Force
 }
+Set-Content -Path $envPath -Value $envContent -Encoding UTF8
+Write-Host ".env.local configurado para o projeto afiliado-ofertas." -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Instalando dependencias travadas..." -ForegroundColor Cyan
