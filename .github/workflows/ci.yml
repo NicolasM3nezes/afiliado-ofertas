@@ -28,3 +28,10 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Upload lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-lock
+          path: package-lock.json
+          if-no-files-found: error
