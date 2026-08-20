@@ -3,6 +3,14 @@ import { decryptSecret } from "@/lib/crypto-secret";
 import { getAuthenticatedServerClient } from "@/lib/server-auth";
 import { searchShopeeOffers } from "@/lib/shopee-affiliate";
 
+function rankOffers(a, b) {
+  if (b.score !== a.score) return b.score - a.score;
+  if (b.soldQuantity !== a.soldQuantity) return b.soldQuantity - a.soldQuantity;
+  if (b.rating !== a.rating) return b.rating - a.rating;
+  if (b.discountPercent !== a.discountPercent) return b.discountPercent - a.discountPercent;
+  return b.commissionRate - a.commissionRate;
+}
+
 export async function GET(request) {
   try {
     const { supabase } = await getAuthenticatedServerClient(request);
@@ -40,24 +48,42 @@ export async function GET(request) {
       keyword: query,
     });
 
-    const discounted = result.offers
-      .filter((offer) => Number(offer.discountPercent || 0) > 0)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        if (b.discountPercent !== a.discountPercent) return b.discountPercent - a.discountPercent;
-        return b.commissionRate - a.commissionRate;
-      });
+    const relevantDiscounted = result.offers.filter((offer) =>
+      Number(offer.discountPercent || 0) > 0
+      && Number(offer.keywordRelevance || 0) >= 0.5
+      && Number(offer.rating || 0) >= 4.3
+      && Number(offer.soldQuantity || 0) >= 20
+    );
+
+    const strict = relevantDiscounted.filter((offer) =>
+      Number(offer.rating || 0) >= 4.5
+      && Number(offer.soldQuantity || 0) >= 50
+      && Number(offer.score || 0) >= 55
+    );
+
+    const selectionMode = strict.length >= 12 ? "strict" : "expanded";
+    const selected = selectionMode === "strict"
+      ? strict
+      : relevantDiscounted;
+
+    const bestOffers = selected
+      .sort(rankOffers)
+      .slice(0, 60);
 
     return NextResponse.json({
       source: "shopee_affiliate_api",
-      count: discounted.length,
-      offers: discounted,
+      count: bestOffers.length,
+      offers: bestOffers,
       pagesFetched: result.pagesFetched,
       totalFetched: result.totalFetched,
+      totalQualified: selected.length,
+      selectionMode,
       truncated: result.truncated,
-      warning: result.truncated
-        ? "A Shopee indicou mais resultados do que o limite de segurança da busca. Os primeiros resultados com desconto foram retornados."
-        : null,
+      warning: bestOffers.length === 0
+        ? "A Shopee não retornou produtos fortes o suficiente para esta palavra-chave. Tente um termo mais específico ou mais popular."
+        : result.truncated
+          ? "A busca avaliou o limite de segurança de páginas e exibiu somente os melhores produtos encontrados."
+          : null,
     });
   } catch (error) {
     return NextResponse.json(
