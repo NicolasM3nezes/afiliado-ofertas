@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./search-overrides.css";
 
 export const metadata = {
   title: "Afiliado Ofertas",
