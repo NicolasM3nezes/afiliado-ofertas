@@ -1,0 +1,14 @@
+.search-grid > label:nth-child(3),
+.search-grid > label:nth-child(4) {
+  display: none;
+}
+
+.search-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr) !important;
+}
+
+@media (max-width: 760px) {
+  .search-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

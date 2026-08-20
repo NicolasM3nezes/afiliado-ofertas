@@ -8,9 +8,6 @@ export async function GET(request) {
     const { supabase } = await getAuthenticatedServerClient(request);
     const { searchParams } = new URL(request.url);
     const query = String(searchParams.get("query") || "").trim();
-    const minDiscount = Number(searchParams.get("minDiscount") || 0);
-    const minScore = Number(searchParams.get("minScore") || 0);
-    const limit = Math.min(Number(searchParams.get("limit") || 24), 50);
 
     if (query.length < 2) {
       return NextResponse.json({ error: "Informe pelo menos 2 caracteres para buscar." }, { status: 400 });
@@ -37,22 +34,30 @@ export async function GET(request) {
       secretTag: connection.secret_tag,
     });
 
-    const offers = await searchShopeeOffers({
+    const result = await searchShopeeOffers({
       appId: connection.account_identifier,
       secret,
       keyword: query,
-      limit,
     });
 
-    const filtered = offers
-      .filter((offer) => offer.discountPercent >= minDiscount)
-      .filter((offer) => offer.score >= minScore)
-      .sort((a, b) => b.score - a.score);
+    const discounted = result.offers
+      .filter((offer) => Number(offer.discountPercent || 0) > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.discountPercent !== a.discountPercent) return b.discountPercent - a.discountPercent;
+        return b.commissionRate - a.commissionRate;
+      });
 
     return NextResponse.json({
       source: "shopee_affiliate_api",
-      count: filtered.length,
-      offers: filtered,
+      count: discounted.length,
+      offers: discounted,
+      pagesFetched: result.pagesFetched,
+      totalFetched: result.totalFetched,
+      truncated: result.truncated,
+      warning: result.truncated
+        ? "A Shopee indicou mais resultados do que o limite de segurança da busca. Os primeiros resultados com desconto foram retornados."
+        : null,
     });
   } catch (error) {
     return NextResponse.json(
