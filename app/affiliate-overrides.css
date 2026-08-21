@@ -1,0 +1,125 @@
+.affiliate-link-setup {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #e3e7ec;
+  border-radius: 16px;
+  background: #fafbfc;
+}
+
+.affiliate-link-setup.configured {
+  border-color: #ccebdc;
+  background: #f2fbf6;
+}
+
+.affiliate-link-setup-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.affiliate-link-setup-copy strong {
+  font-size: 13px;
+}
+
+.affiliate-link-setup-copy p {
+  margin: 0;
+  color: #69717d;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.affiliate-kicker {
+  color: #9a7b00;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.affiliate-link-setup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 13px;
+}
+
+.affiliate-link-setup-row .btn {
+  white-space: nowrap;
+}
+
+.affiliate-link-setup > small {
+  display: block;
+  margin-top: 8px;
+  color: #858c97;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.commission-estimate-card {
+  margin: 13px 0 11px;
+  padding: 12px 13px;
+  border: 1px solid #e5e8ed;
+  border-radius: 13px;
+  background: #f8f9fb;
+}
+
+.commission-estimate-card.has-value {
+  border-color: #ccebdc;
+  background: #eef9f3;
+}
+
+.commission-estimate-card > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.commission-estimate-card span {
+  color: #737b87;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.commission-estimate-card strong {
+  color: #20252d;
+  font-size: 17px;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+
+.commission-estimate-card.has-value strong {
+  color: #147347;
+}
+
+.commission-estimate-card small {
+  display: block;
+  margin-top: 4px;
+  color: #7f8792;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.affiliate-ready {
+  color: #168a53 !important;
+  font-weight: 850;
+}
+
+@media (max-width: 760px) {
+  .affiliate-link-setup-row {
+    grid-template-columns: 1fr;
+  }
+
+  .affiliate-link-setup-row .btn {
+    width: 100%;
+  }
+
+  .commission-estimate-card > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
