@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches:
+      - main
       - feat/mvp-foundation
   pull_request:
     branches:
