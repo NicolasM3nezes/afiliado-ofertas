@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/mvp-foundation
   pull_request:
     branches:
       - main
@@ -27,6 +26,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Security check
+        run: npm run check:security
 
       - name: Build
         run: npm run build
