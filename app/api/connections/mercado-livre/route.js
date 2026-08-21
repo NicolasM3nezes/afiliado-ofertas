@@ -35,10 +35,12 @@ export async function GET(request) {
       .maybeSingle();
 
     if (error) throw error;
+    const tracking = data?.metadata?.affiliate_tracking || null;
 
     return NextResponse.json({
       configured: Boolean(data),
       connected: data?.status === "connected",
+      affiliateConfigured: Boolean(tracking?.matt_word),
       connection: data
         ? {
             account_identifier: data.account_identifier,
@@ -48,6 +50,13 @@ export async function GET(request) {
             redirect_uri: data.metadata?.redirect_uri || "",
             pkce: data.metadata?.pkce !== false,
             provider_user_id: data.metadata?.provider_user_id || null,
+            affiliate_tracking: tracking?.matt_word
+              ? {
+                  matt_word: tracking.matt_word,
+                  matt_tool: tracking.matt_tool || null,
+                  configured_at: tracking.configured_at || null,
+                }
+              : null,
             oauth_expires_at: data.oauth_expires_at,
             oauth_connected_at: data.oauth_connected_at,
             updated_at: data.updated_at,
@@ -74,9 +83,17 @@ export async function POST(request) {
       );
     }
 
+    const { data: existing } = await supabase
+      .from("marketplace_connections")
+      .select("metadata")
+      .eq("marketplace_slug", "mercado-livre")
+      .eq("connection_type", "oauth_app")
+      .maybeSingle();
+
     const encrypted = encryptSecret(clientSecret);
     const now = new Date().toISOString();
     const metadata = {
+      ...(existing?.metadata || {}),
       redirect_uri: redirectUri,
       pkce: true,
       oauth_flows: ["authorization_code", "refresh_token"],
@@ -115,11 +132,13 @@ export async function POST(request) {
     return NextResponse.json({
       configured: true,
       connected: false,
+      affiliateConfigured: Boolean(metadata?.affiliate_tracking?.matt_word),
       connection: {
         account_identifier: clientId,
         status: "pending",
         redirect_uri: redirectUri,
         pkce: true,
+        affiliate_tracking: metadata?.affiliate_tracking || null,
         oauth_expires_at: null,
         oauth_connected_at: null,
         updated_at: now,
