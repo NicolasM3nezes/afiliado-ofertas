@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="SE LIGA MEN">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="72%"><stop offset="0" stop-color="#1b1b1d"/><stop offset="1" stop-color="#050505"/></radialGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff9a1f"/><stop offset=".45" stop-color="#ff6a00"/><stop offset="1" stop-color="#b83b00"/></linearGradient>
+  </defs>
+  <circle cx="320" cy="320" r="306" fill="url(#bg)" stroke="#ff6a00" stroke-width="16"/>
+  <circle cx="320" cy="320" r="278" fill="none" stroke="#38383b" stroke-width="5"/>
+  <path d="M110 190 L230 90 L230 170 L165 222 L230 265 L230 345 L110 255 Z" fill="#f3f3f3"/>
+  <path d="M260 100 H330 V295 L415 225 V315 L295 410 L260 380 Z" fill="#f3f3f3"/>
+  <path d="M115 365 L225 455 L225 385 L165 335 L225 292 L225 215 L115 300 Z" fill="url(#orange)" opacity=".95"/>
+  <path d="M255 430 L320 482 L420 398 V485 L320 565 L255 513 Z" fill="url(#orange)"/>
+  <text x="320" y="595" text-anchor="middle" fill="#f5f5f5" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="42" letter-spacing="4">SE LIGA, MEN!</text>
+</svg>
