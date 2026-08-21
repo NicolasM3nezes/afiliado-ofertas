@@ -10,7 +10,7 @@ export default function GroupSetupClient() {
   const [supabase, setSupabase] = useState(null);
   const [session, setSession] = useState(null);
   const [groups, setGroups] = useState([]);
-  const [selected, setSelected] = useState(["achadinhos", "casa", "tech", "ferramentas"]);
+  const [selected, setSelected] = useState(["masculino"]);
   const [busy, setBusy] = useState("");
   const [toast, setToast] = useState("");
 
@@ -66,7 +66,7 @@ export default function GroupSetupClient() {
     setBusy("");
     if (error) return notify(error.message);
     await loadGroups();
-    notify(`${rows.length} grupos criados. Sua operação inicial está pronta.`);
+    notify(`${rows.length} grupo(s) criado(s). Sua operação está pronta.`);
   }
 
   if (!session) return <main className={styles.loading}>Carregando configuração rápida...</main>;
@@ -76,8 +76,8 @@ export default function GroupSetupClient() {
       <header className={styles.header}>
         <div>
           <span>Configuração Rápida</span>
-          <h1>Comece com grupos prontos.</h1>
-          <p>Escolha os perfis que combinam com sua operação. Preço, score, comissão, frequência e palavras-chave já entram configurados.</p>
+          <h1>Comece com o público certo.</h1>
+          <p>O perfil “Ofertas para Homens” já vem pronto para roupas, tênis, perfumes, relógios, acessórios, autocuidado e lifestyle masculino.</p>
         </div>
         <nav><a href="/groups">Central de grupos</a><a href="/groups/today">Operação do Dia</a></nav>
       </header>
@@ -85,8 +85,8 @@ export default function GroupSetupClient() {
       <section className={styles.summary}>
         <div><span>Grupos atuais</span><strong>{groups.length}</strong><small>{groups.filter((group) => group.active).length} ativos</small></div>
         <div><span>Selecionados</span><strong>{selected.length}</strong><small>{selectedPresets.length} novos para criar</small></div>
-        <div><span>Pacote recomendado</span><strong>4</strong><small>Achadinhos · Casa · Tech · Ferramentas</small></div>
-        <button onClick={createSelected} disabled={Boolean(busy) || !selectedPresets.length}>{busy === "pack" ? "Criando grupos..." : `Criar selecionados (${selectedPresets.length})`}</button>
+        <div><span>Recomendado agora</span><strong>Homens</strong><small>Moda · tênis · perfume · acessórios</small></div>
+        <button onClick={createSelected} disabled={Boolean(busy) || !selectedPresets.length}>{busy === "pack" ? "Criando grupo..." : `Criar selecionados (${selectedPresets.length})`}</button>
       </section>
 
       <section className={styles.grid}>
@@ -99,7 +99,7 @@ export default function GroupSetupClient() {
                 <span className={styles.icon}>{preset.icon}</span>
                 <label className={styles.check}><input type="checkbox" checked={checked} disabled={exists} onChange={() => toggle(preset.key)} /><span>{exists ? "Já criado" : checked ? "Selecionado" : "Selecionar"}</span></label>
               </div>
-              <h2>{preset.name}</h2>
+              <h2>{preset.name}{preset.recommended ? " · Recomendado" : ""}</h2>
               <p>{preset.description}</p>
               <div className={styles.rules}>
                 <span>Score ≥ {preset.minScore}</span>
@@ -117,7 +117,7 @@ export default function GroupSetupClient() {
       </section>
 
       <section className={styles.nextStep}>
-        <div><span>Depois de criar</span><h2>Não precisa configurar mais nada para começar.</h2><p>Abra a Operação do Dia, clique em Atualizar todos os grupos e deixe o sistema montar as filas automaticamente.</p></div>
+        <div><span>Depois de criar</span><h2>O sistema já sabe o que procurar.</h2><p>Abra a Operação do Dia para buscar moda masculina, tênis, perfume e acessórios e montar sua fila automaticamente.</p></div>
         <a href="/groups/today">Abrir Operação do Dia →</a>
       </section>
 
