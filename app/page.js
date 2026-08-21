@@ -1,5 +1,10 @@
+import AppShell from "./components/AppShell";
 import DashboardClient from "./DashboardClient";
 
 export default function Page() {
-  return <DashboardClient />;
+  return (
+    <AppShell>
+      <DashboardClient />
+    </AppShell>
+  );
 }
