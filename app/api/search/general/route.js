@@ -6,12 +6,16 @@ import {
   refreshMercadoLivreAccessToken,
   searchMercadoLivreBest,
 } from "@/lib/marketplaces/mercado-livre";
+import { enrichMercadoLivreAffiliateOffers } from "@/lib/marketplaces/mercado-livre-affiliate";
 
 const VALID_PLATFORMS = new Set(["all", "shopee", "mercado-livre"]);
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 function rankOffers(a, b) {
   if (b.score !== a.score) return b.score - a.score;
+  if (Number(b.estimatedCommission || 0) !== Number(a.estimatedCommission || 0)) {
+    return Number(b.estimatedCommission || 0) - Number(a.estimatedCommission || 0);
+  }
   if (b.soldQuantity !== a.soldQuantity) return b.soldQuantity - a.soldQuantity;
   if (b.discountPercent !== a.discountPercent) return b.discountPercent - a.discountPercent;
   return Number(b.commissionRate || 0) - Number(a.commissionRate || 0);
@@ -33,12 +37,28 @@ function selectBestShopeeOffers(result) {
 
   const selected = strict.length >= 12 ? strict : relevantDiscounted;
   return selected
-    .map((offer) => ({
-      ...offer,
-      marketplaceSlug: "shopee",
-      marketplaceName: "Shopee",
-      marketplaceCode: "S",
-    }))
+    .map((offer) => {
+      const commissionRate = Number(offer.commissionRate || 0);
+      const providerEstimate = Number(offer.estimatedCommission || 0);
+      const estimatedCommission = providerEstimate > 0
+        ? providerEstimate
+        : commissionRate > 0
+          ? Number(((Number(offer.price || 0) * commissionRate) / 100).toFixed(2))
+          : 0;
+
+      return {
+        ...offer,
+        marketplaceSlug: "shopee",
+        marketplaceName: "Shopee",
+        marketplaceCode: "S",
+        estimatedCommission,
+        commissionEstimateType: providerEstimate > 0 ? "provider" : "rate_estimate",
+        commissionNote: commissionRate > 0
+          ? "Estimativa com base na comissão informada pela Affiliate API da Shopee."
+          : null,
+        affiliateLinkConfigured: Boolean(offer.affiliateUrl),
+      };
+    })
     .sort(rankOffers)
     .slice(0, 60);
 }
@@ -209,11 +229,24 @@ async function searchMercadoLivre(connection, query, supabase) {
     };
   }
 
+  const tracking = connection.metadata?.affiliate_tracking || null;
+  const offers = await enrichMercadoLivreAffiliateOffers({
+    offers: result.offers,
+    accessToken: tokenState.accessToken,
+    tracking,
+  });
+
+  const warnings = [];
+  if (result.warning) warnings.push(result.warning);
+  if (!tracking?.matt_word) {
+    warnings.push("Mercado Livre conectado, mas o rastreamento de afiliado ainda não foi configurado. Cole um link completo de afiliado na aba Conexões para converter os links automaticamente.");
+  }
+
   return {
     slug: "mercado-livre",
     ok: true,
-    offers: result.offers,
-    warning: result.warning,
+    offers,
+    warning: warnings.join(" ") || null,
   };
 }
 
