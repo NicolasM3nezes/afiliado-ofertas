@@ -55,6 +55,7 @@ export default function AppShell({ children, session: providedSession = null, ac
   const [session, setSession] = useState(providedSession);
   const [sessionChecked, setSessionChecked] = useState(Boolean(providedSession));
   const [menuOpen, setMenuOpen] = useState(false);
+  const [rootView, setRootView] = useState("");
 
   useEffect(() => {
     if (providedSession) {
@@ -87,17 +88,39 @@ export default function AppShell({ children, session: providedSession = null, ac
 
   useEffect(() => {
     setMenuOpen(false);
-  }, [pathname]);
+    if (pathname !== "/") {
+      setRootView("");
+      return;
+    }
+    const view = new URLSearchParams(window.location.search).get("view") || "";
+    setRootView(view);
+
+    if (view === "connections") {
+      const timer = window.setInterval(() => {
+        const connectionButton = document.querySelector(".sidebar-new .side-nav .side-item:nth-child(2)");
+        if (!connectionButton) return;
+        connectionButton.click();
+        window.clearInterval(timer);
+      }, 50);
+      const timeout = window.setTimeout(() => window.clearInterval(timer), 2500);
+      return () => {
+        window.clearInterval(timer);
+        window.clearTimeout(timeout);
+      };
+    }
+  }, [pathname, session]);
+
+  const resolvedActiveSection = activeSection || (pathname === "/" && rootView === "connections" ? "connections" : "");
 
   const pageMeta = useMemo(() => {
-    if (pathname === "/" && activeSection === "connections") {
+    if (pathname === "/" && resolvedActiveSection === "connections") {
       return { eyebrow: "Integrações", title: "Conexões" };
     }
     return PAGE_META[pathname] || { eyebrow: "Afiliado Ofertas", title: "Central de afiliados" };
-  }, [pathname, activeSection]);
+  }, [pathname, resolvedActiveSection]);
 
   function isActive(item) {
-    if (activeSection) return item.key === activeSection;
+    if (resolvedActiveSection) return item.key === resolvedActiveSection;
     if (item.key === "offers") return pathname === "/";
     if (item.key === "groups") return pathname === "/groups";
     return pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -112,12 +135,16 @@ export default function AppShell({ children, session: providedSession = null, ac
     }
   }
 
-  const email = session?.user?.email || "Conta";
-  const initial = email.slice(0, 1).toUpperCase();
-
   if (!sessionChecked && !providedSession) {
     return <div className={styles.loading}>Carregando painel...</div>;
   }
+
+  if (!session && !providedSession) {
+    return children;
+  }
+
+  const email = session?.user?.email || "Conta";
+  const initial = email.slice(0, 1).toUpperCase();
 
   return (
     <div className={styles.shell}>
