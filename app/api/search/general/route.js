@@ -114,12 +114,9 @@ async function searchMercadoLivre(connection, query) {
 
   let result = await searchMercadoLivreBest({ query, accessToken });
 
-  // Alguns recursos públicos do Mercado Livre podem funcionar sem token de aplicação.
-  // Se Client Credentials não estiver habilitado no app, tentamos a consulta pública antes de desistir.
+  // Se o token da aplicação foi aceito mas a busca com ele não estiver liberada,
+  // tentamos o recurso público uma vez antes de considerar a fonte indisponível.
   if (!result.ok && accessToken) {
-    const publicResult = await searchMercadoLivreBest({ query, accessToken: "" });
-    if (publicResult.ok) result = publicResult;
-  } else if (!accessToken) {
     const publicResult = await searchMercadoLivreBest({ query, accessToken: "" });
     if (publicResult.ok) result = publicResult;
   }
@@ -142,7 +139,7 @@ async function searchMercadoLivre(connection, query) {
     ok: true,
     offers: result.offers,
     warning: tokenWarning && !accessToken
-      ? `Mercado Livre consultado sem token de Client Credentials. ${tokenWarning}`
+      ? `Mercado Livre consultado pela busca pública. ${tokenWarning}`
       : result.warning,
   };
 }
@@ -177,12 +174,8 @@ export async function GET(request) {
     );
 
     const tasks = [];
-    if (wantsPlatform(platform, "shopee")) {
-      tasks.push(searchShopee(shopeeConnection, query));
-    }
-    if (wantsPlatform(platform, "mercado-livre")) {
-      tasks.push(searchMercadoLivre(mercadoConnection, query));
-    }
+    if (wantsPlatform(platform, "shopee")) tasks.push(searchShopee(shopeeConnection, query));
+    if (wantsPlatform(platform, "mercado-livre")) tasks.push(searchMercadoLivre(mercadoConnection, query));
 
     const settled = await Promise.allSettled(tasks);
     const results = settled.map((entry) => {
