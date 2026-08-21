@@ -30,15 +30,11 @@ $backupPath = Join-Path $projectRoot ".env.local.backup"
 
 $currentEnv = ""
 $backupEnv = ""
-$mlToken = ""
 $encryptionKey = ""
 $previousEncryptionKey = ""
 
 if (Test-Path $envPath) {
     $currentEnv = Get-Content -Path $envPath -Raw
-    if ($currentEnv -match '(?m)^MERCADO_LIVRE_ACCESS_TOKEN=(.*)$') {
-        $mlToken = $matches[1].Trim()
-    }
     if ($currentEnv -match '(?m)^APP_ENCRYPTION_KEY=(.+)$') {
         $encryptionKey = $matches[1].Trim()
     }
@@ -53,7 +49,7 @@ if (Test-Path $backupPath) {
         $backupKey = $matches[1].Trim()
         if ([string]::IsNullOrWhiteSpace($encryptionKey)) {
             $encryptionKey = $backupKey
-            Write-Host "Chave de criptografia recuperada do backup." -ForegroundColor Green
+            Write-Host "Chave de criptografia recuperada do backup local." -ForegroundColor Green
         } elseif ($backupKey -ne $encryptionKey -and [string]::IsNullOrWhiteSpace($previousEncryptionKey)) {
             $previousEncryptionKey = $backupKey
             Write-Host "Chave anterior encontrada no backup para recuperar credenciais existentes." -ForegroundColor Yellow
@@ -75,8 +71,6 @@ NEXT_PUBLIC_SUPABASE_URL=https://flicyhbmovfvmvzoilzh.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_8rwFdzOqo0MIuJqi-qqNkg_OeZqvuJI
 APP_ENCRYPTION_KEY=$encryptionKey
 APP_ENCRYPTION_KEY_PREVIOUS=$previousEncryptionKey
-MERCADO_LIVRE_ACCESS_TOKEN=$mlToken
-ALLOW_DEMO_OFFERS=true
 "@
 
 if (Test-Path $envPath) {
@@ -84,6 +78,7 @@ if (Test-Path $envPath) {
 }
 Set-Content -Path $envPath -Value $envContent -Encoding UTF8
 Write-Host ".env.local configurado para o projeto afiliado-ofertas." -ForegroundColor Green
+Write-Host "O backup local .env.local.backup fica ignorado pelo Git." -ForegroundColor Gray
 
 Write-Host ""
 Write-Host "Instalando dependencias travadas..." -ForegroundColor Cyan
@@ -91,6 +86,15 @@ npm ci
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Falha ao instalar dependencias." -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
+Write-Host ""
+Write-Host "Executando verificacao de seguranca do repositorio..." -ForegroundColor Cyan
+npm run check:security
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "A verificacao de seguranca falhou. Corrija os itens acima antes de iniciar." -ForegroundColor Red
     exit $LASTEXITCODE
 }
 
