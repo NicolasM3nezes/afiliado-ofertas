@@ -39,18 +39,24 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
 
   const [activeView, setActiveView] = useState("offers");
-  const [connectionLoading, setConnectionLoading] = useState(false);
+
+  const [shopeeLoading, setShopeeLoading] = useState(false);
   const [shopeeConnection, setShopeeConnection] = useState(null);
   const [shopeeAppId, setShopeeAppId] = useState("");
   const [shopeeSecret, setShopeeSecret] = useState("");
   const [showShopeeForm, setShowShopeeForm] = useState(false);
 
+  const [mercadoLoading, setMercadoLoading] = useState(false);
+  const [mercadoConnection, setMercadoConnection] = useState(null);
+  const [mercadoClientId, setMercadoClientId] = useState("");
+  const [mercadoClientSecret, setMercadoClientSecret] = useState("");
+  const [mercadoRedirectUri, setMercadoRedirectUri] = useState("");
+  const [showMercadoForm, setShowMercadoForm] = useState(false);
+
   const [niches, setNiches] = useState([]);
   const [newNiche, setNewNiche] = useState("");
   const [selectedNicheId, setSelectedNicheId] = useState("");
   const [query, setQuery] = useState("ferramentas");
-  const [minDiscount, setMinDiscount] = useState(0);
-  const [minScore, setMinScore] = useState(50);
   const [offers, setOffers] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchWarning, setSearchWarning] = useState("");
@@ -79,6 +85,7 @@ export default function Home() {
     if (!supabase || !session) return;
     loadNiches();
     loadShopeeConnection();
+    loadMercadoConnection();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, session]);
 
@@ -88,6 +95,9 @@ export default function Home() {
   );
 
   const isShopeeConnected = shopeeConnection?.status === "connected";
+  const isMercadoConfigured = Boolean(mercadoConnection);
+  const isMercadoConnected = mercadoConnection?.status === "connected";
+  const configuredCount = Number(isShopeeConnected) + Number(isMercadoConfigured);
 
   function apiHeaders() {
     return {
@@ -96,10 +106,15 @@ export default function Home() {
     };
   }
 
+  function showToast(message) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3200);
+  }
+
   async function loadNiches() {
     const { data, error } = await supabase
       .from("niches")
-      .select("id,name,slug,min_discount,min_score")
+      .select("id,name,slug")
       .order("created_at", { ascending: true });
 
     if (!error) {
@@ -118,10 +133,25 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "Falha ao carregar conexão Shopee.");
       setShopeeConnection(data.connection || null);
       if (data.connection?.account_identifier) setShopeeAppId(data.connection.account_identifier);
-      if (!data.connected) {
-        setShowShopeeForm(true);
-        setActiveView("connections");
-      }
+      if (!data.connected) setShowShopeeForm(true);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
+  async function loadMercadoConnection() {
+    try {
+      const response = await fetch("/api/connections/mercado-livre", {
+        headers: apiHeaders(),
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Falha ao carregar Mercado Livre.");
+
+      setMercadoConnection(data.connection || null);
+      if (data.connection?.account_identifier) setMercadoClientId(data.connection.account_identifier);
+      if (data.connection?.redirect_uri) setMercadoRedirectUri(data.connection.redirect_uri);
+      setShowMercadoForm(!data.configured);
     } catch (error) {
       showToast(error.message);
     }
@@ -156,7 +186,7 @@ export default function Home() {
       return;
     }
 
-    setConnectionLoading(true);
+    setShopeeLoading(true);
     try {
       const response = await fetch("/api/connections/shopee", {
         method: "POST",
@@ -169,16 +199,16 @@ export default function Home() {
       setShopeeConnection(data.connection);
       setShopeeSecret("");
       setShowShopeeForm(false);
-      showToast("Shopee conectada e validada.");
+      showToast("Shopee conectada e salva no banco.");
     } catch (error) {
       showToast(error.message);
     } finally {
-      setConnectionLoading(false);
+      setShopeeLoading(false);
     }
   }
 
   async function disconnectShopee() {
-    setConnectionLoading(true);
+    setShopeeLoading(true);
     try {
       const response = await fetch("/api/connections/shopee", {
         method: "DELETE",
@@ -189,11 +219,64 @@ export default function Home() {
       setShopeeConnection(null);
       setShopeeSecret("");
       setShowShopeeForm(true);
-      showToast("Shopee desconectada.");
+      showToast("Shopee removida do banco.");
     } catch (error) {
       showToast(error.message);
     } finally {
-      setConnectionLoading(false);
+      setShopeeLoading(false);
+    }
+  }
+
+  async function saveMercadoConnection(event) {
+    event?.preventDefault();
+    if (!mercadoClientId.trim() || !mercadoClientSecret.trim() || !mercadoRedirectUri.trim()) {
+      showToast("Informe Client ID, Client Secret e Redirect URI do Mercado Livre.");
+      return;
+    }
+
+    setMercadoLoading(true);
+    try {
+      const response = await fetch("/api/connections/mercado-livre", {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          clientId: mercadoClientId.trim(),
+          clientSecret: mercadoClientSecret.trim(),
+          redirectUri: mercadoRedirectUri.trim(),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar Mercado Livre.");
+
+      setMercadoConnection(data.connection);
+      setMercadoClientSecret("");
+      setShowMercadoForm(false);
+      showToast("Configuração do Mercado Livre salva no banco.");
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setMercadoLoading(false);
+    }
+  }
+
+  async function disconnectMercado() {
+    setMercadoLoading(true);
+    try {
+      const response = await fetch("/api/connections/mercado-livre", {
+        method: "DELETE",
+        headers: apiHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Falha ao remover Mercado Livre.");
+
+      setMercadoConnection(null);
+      setMercadoClientSecret("");
+      setShowMercadoForm(true);
+      showToast("Configuração do Mercado Livre removida do banco.");
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setMercadoLoading(false);
     }
   }
 
@@ -208,10 +291,10 @@ export default function Home() {
         name,
         slug: slugify(name),
         keywords: [name],
-        min_discount: Number(minDiscount),
-        min_score: Number(minScore),
+        min_discount: 0,
+        min_score: 0,
       })
-      .select("id,name,slug,min_discount,min_score")
+      .select("id,name,slug")
       .single();
 
     if (error) {
@@ -237,12 +320,7 @@ export default function Home() {
     setSearchWarning("");
     setOffers([]);
 
-    const params = new URLSearchParams({
-      query,
-      minDiscount: String(minDiscount),
-      minScore: String(minScore),
-      limit: "24",
-    });
+    const params = new URLSearchParams({ query });
 
     try {
       const response = await fetch(`/api/search/shopee?${params.toString()}`, {
@@ -252,7 +330,10 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Falha ao buscar ofertas.");
       setOffers(data.offers || []);
-      if (!data.offers?.length) setSearchWarning("A busca foi concluída, mas nenhuma oferta passou pelos filtros atuais.");
+      setSearchWarning(data.warning || "");
+      if (!data.offers?.length && !data.warning) {
+        setSearchWarning("Nenhum produto forte o suficiente foi encontrado para essa palavra-chave.");
+      }
     } catch (error) {
       setSearchWarning(error.message);
     } finally {
@@ -359,11 +440,6 @@ export default function Home() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  function showToast(message) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 3200);
-  }
-
   if (bootError) {
     return (
       <main className="auth-screen">
@@ -388,6 +464,7 @@ export default function Home() {
               <span>Seu radar de oportunidades</span>
             </div>
           </div>
+
           <div className="auth-copy">
             <span className="kicker">Automação para afiliados</span>
             <h1>Encontre. Prepare. Publique.</h1>
@@ -438,7 +515,7 @@ export default function Home() {
             <button className={activeView === "connections" ? "side-item active" : "side-item"} onClick={() => setActiveView("connections")}>
               <span className="side-icon">↗</span>
               <span>Conexões</span>
-              <span className={isShopeeConnected ? "nav-dot online" : "nav-dot"} />
+              <span className={configuredCount > 0 ? "nav-dot online" : "nav-dot"} />
             </button>
             <button className="side-item muted-item" disabled>
               <span className="side-icon">✦</span>
@@ -469,8 +546,8 @@ export default function Home() {
             <span className="kicker">{activeView === "connections" ? "Integrações" : "Robô de ofertas"}</span>
             <h1>{activeView === "connections" ? "Conexões" : "Encontrar ofertas"}</h1>
             <p>{activeView === "connections"
-              ? "Conecte suas contas e APIs para liberar as automações do painel."
-              : "Busque produtos reais da Shopee, compare oportunidade e deixe a divulgação pronta."}</p>
+              ? "Configure seus marketplaces. Credenciais e status ficam salvos no Supabase."
+              : "Busque os melhores produtos da Shopee e deixe a divulgação pronta."}</p>
           </div>
           <div className="environment-pill"><span /> localhost</div>
         </header>
@@ -479,23 +556,41 @@ export default function Home() {
           <div className="connections-view">
             <section className="connection-hero">
               <div>
-                <span className="kicker light">Primeira integração</span>
-                <h2>Shopee Affiliate API</h2>
-                <p>A busca de produtos, comissões e links afiliados passa a sair diretamente da sua conta Shopee.</p>
+                <span className="kicker light">Central de integrações</span>
+                <h2>Shopee + Mercado Livre</h2>
+                <p>Configure as credenciais uma vez. O painel salva tudo no banco e reutiliza as conexões nas automações.</p>
               </div>
-              <div className={isShopeeConnected ? "big-status connected" : "big-status"}>
+              <div className={configuredCount > 0 ? "big-status connected" : "big-status"}>
                 <span />
-                {isShopeeConnected ? "Conectada" : "Não conectada"}
+                {configuredCount}/2 configuradas
               </div>
             </section>
 
-            <div className="connection-layout">
-              <section className="connection-card main-connection-card">
+            <section className="connections-summary">
+              <div className="connection-summary-card">
+                <span>Shopee Afiliados</span>
+                <strong className={isShopeeConnected ? "success-text" : "danger-text"}>{isShopeeConnected ? "Conectada" : "Pendente"}</strong>
+                <small>{isShopeeConnected ? "API validada" : "Informe App ID e Secret"}</small>
+              </div>
+              <div className="connection-summary-card">
+                <span>Mercado Livre</span>
+                <strong className={isMercadoConfigured ? "success-text" : "danger-text"}>{isMercadoConnected ? "Conectado" : isMercadoConfigured ? "Configurado" : "Pendente"}</strong>
+                <small>{isMercadoConfigured ? "Aplicação OAuth salva" : "Informe credenciais do app"}</small>
+              </div>
+              <div className="connection-summary-card">
+                <span>Segurança</span>
+                <strong>Criptografado</strong>
+                <small>Secrets nunca retornam ao navegador</small>
+              </div>
+            </section>
+
+            <div className="connection-cards-grid">
+              <section className="connection-card market-card">
                 <div className="connection-card-head">
                   <div className="market-logo shopee-logo">S</div>
                   <div>
                     <h3>Shopee Afiliados</h3>
-                    <p>Open API · Brasil · GraphQL</p>
+                    <p>Affiliate Open API · Brasil</p>
                   </div>
                   <span className={isShopeeConnected ? "status-badge connected" : "status-badge"}>
                     {isShopeeConnected ? "Ativa" : "Pendente"}
@@ -518,84 +613,165 @@ export default function Home() {
                         <strong>••••••••••••••••</strong>
                       </div>
                     </div>
+
                     <div className="success-strip">
                       <span>✓</span>
                       <div>
-                        <strong>Credenciais validadas</strong>
-                        <p>A API está pronta para buscar ofertas e gerar links com seu rastreamento de afiliado.</p>
+                        <strong>Credenciais validadas e salvas</strong>
+                        <p>A API está pronta para buscar produtos, comissões e links de afiliado.</p>
                       </div>
                     </div>
+
                     <div className="connection-actions">
-                      <button className="btn btn-secondary" onClick={() => setShowShopeeForm(true)}>Atualizar credenciais</button>
-                      <button className="btn btn-danger-ghost" onClick={disconnectShopee} disabled={connectionLoading}>Desconectar</button>
+                      <button className="btn btn-secondary" onClick={() => setShowShopeeForm(true)}>Atualizar</button>
+                      <button className="btn btn-danger-ghost" onClick={disconnectShopee} disabled={shopeeLoading}>Remover</button>
                     </div>
                   </div>
                 ) : (
                   <form className="connection-form" onSubmit={saveShopeeConnection}>
                     <div className="form-intro">
-                      <h4>{isShopeeConnected ? "Trocar credenciais" : "Conectar minha API"}</h4>
-                      <p>Use o App ID e o Secret disponibilizados na Open API do programa de afiliados da Shopee.</p>
+                      <h4>{isShopeeConnected ? "Trocar credenciais" : "Conectar Shopee"}</h4>
+                      <p>Use o App ID e o Secret da Affiliate Open API.</p>
                     </div>
+
                     <div className="two-fields">
                       <label>
                         App ID
-                        <input value={shopeeAppId} onChange={(e) => setShopeeAppId(e.target.value)} placeholder="Ex.: 123456789" autoComplete="off" />
+                        <input value={shopeeAppId} onChange={(e) => setShopeeAppId(e.target.value)} placeholder="App ID da Shopee" autoComplete="off" />
                       </label>
                       <label>
                         Secret
-                        <input type="password" value={shopeeSecret} onChange={(e) => setShopeeSecret(e.target.value)} placeholder="Cole o Secret da API" autoComplete="new-password" />
+                        <input type="password" value={shopeeSecret} onChange={(e) => setShopeeSecret(e.target.value)} placeholder="Secret da API" autoComplete="new-password" />
                       </label>
                     </div>
+
                     <div className="security-note">
                       <span>▣</span>
-                      <p>O Secret é criptografado antes de ser salvo. Ele não fica exposto na interface nem é enviado para o GitHub.</p>
+                      <p>O Secret é testado na Shopee e criptografado antes de ser salvo no Supabase.</p>
                     </div>
+
                     <div className="connection-actions">
-                      {isShopeeConnected && <button type="button" className="btn btn-secondary" onClick={() => { setShowShopeeForm(false); setShopeeSecret(""); }}>Cancelar</button>}
-                      <button className="btn btn-shopee" disabled={connectionLoading}>
-                        {connectionLoading ? "Validando API..." : "Testar e conectar Shopee"}
+                      {isShopeeConnected && (
+                        <button type="button" className="btn btn-secondary" onClick={() => { setShowShopeeForm(false); setShopeeSecret(""); }}>
+                          Cancelar
+                        </button>
+                      )}
+                      <button className="btn btn-shopee" disabled={shopeeLoading}>
+                        {shopeeLoading ? "Validando..." : "Testar e salvar Shopee"}
                       </button>
                     </div>
                   </form>
                 )}
               </section>
 
-              <aside className="connection-side">
-                <section className="mini-card">
-                  <span className="mini-label">O que será liberado</span>
-                  <ul className="check-list">
-                    <li><span>✓</span> Busca real de produtos</li>
-                    <li><span>✓</span> Comissão por produto</li>
-                    <li><span>✓</span> Link afiliado automático</li>
-                    <li><span>✓</span> Ranking de oportunidade</li>
-                    <li><span>✓</span> Mensagem pronta para WhatsApp</li>
-                  </ul>
-                </section>
-                <section className="mini-card soft-card">
-                  <span className="mini-label">Próximas conexões</span>
-                  <div className="upcoming-market"><span>ML</span><div><strong>Mercado Livre</strong><small>Planejado</small></div></div>
-                  <div className="upcoming-market"><span>AZ</span><div><strong>Amazon</strong><small>Planejado</small></div></div>
-                </section>
-              </aside>
+              <section className="connection-card market-card">
+                <div className="connection-card-head">
+                  <div className="market-logo ml-logo">ML</div>
+                  <div>
+                    <h3>Mercado Livre</h3>
+                    <p>OAuth 2.0 · Authorization Code + PKCE</p>
+                  </div>
+                  <span className={isMercadoConnected ? "status-badge connected" : isMercadoConfigured ? "status-badge configured" : "status-badge"}>
+                    {isMercadoConnected ? "Ativa" : isMercadoConfigured ? "Configurado" : "Pendente"}
+                  </span>
+                </div>
+
+                {isMercadoConfigured && !showMercadoForm ? (
+                  <div className="connected-panel">
+                    <div className="connection-facts two">
+                      <div>
+                        <span>Client ID</span>
+                        <strong>{mercadoConnection.account_identifier}</strong>
+                      </div>
+                      <div>
+                        <span>Client Secret</span>
+                        <strong>••••••••••••••••</strong>
+                      </div>
+                      <div className="wide-fact">
+                        <span>Redirect URI</span>
+                        <strong>{mercadoConnection.redirect_uri}</strong>
+                      </div>
+                    </div>
+
+                    <div className="mercado-strip">
+                      <span>✓</span>
+                      <div>
+                        <strong>Aplicação OAuth salva no banco</strong>
+                        <p>{isMercadoConnected
+                          ? "A conta Mercado Livre já está autorizada."
+                          : "Credenciais prontas. A próxima etapa será autorizar a conta Mercado Livre e salvar access/refresh token."}</p>
+                      </div>
+                    </div>
+
+                    <div className="connection-actions">
+                      <button className="btn btn-secondary" onClick={() => setShowMercadoForm(true)}>Atualizar</button>
+                      <button className="btn btn-danger-ghost" onClick={disconnectMercado} disabled={mercadoLoading}>Remover</button>
+                    </div>
+                  </div>
+                ) : (
+                  <form className="connection-form" onSubmit={saveMercadoConnection}>
+                    <div className="form-intro">
+                      <h4>{isMercadoConfigured ? "Trocar credenciais" : "Configurar Mercado Livre"}</h4>
+                      <p>Copie os dados da aplicação criada no portal de desenvolvedores do Mercado Livre.</p>
+                    </div>
+
+                    <div className="three-fields">
+                      <label>
+                        Client ID / APP ID
+                        <input value={mercadoClientId} onChange={(e) => setMercadoClientId(e.target.value)} placeholder="Client ID do Mercado Livre" autoComplete="off" />
+                      </label>
+                      <label>
+                        Client Secret
+                        <input type="password" value={mercadoClientSecret} onChange={(e) => setMercadoClientSecret(e.target.value)} placeholder="Client Secret" autoComplete="new-password" />
+                      </label>
+                      <label className="wide-field">
+                        Redirect URI
+                        <input value={mercadoRedirectUri} onChange={(e) => setMercadoRedirectUri(e.target.value)} placeholder="https://seu-dominio.com/api/mercado-livre/callback" autoComplete="off" />
+                        <small>Use exatamente a mesma URL HTTPS cadastrada no app do Mercado Livre.</small>
+                      </label>
+                    </div>
+
+                    <div className="security-note">
+                      <span>▣</span>
+                      <p>O Client Secret é criptografado antes de ser salvo. PKCE e os dados de OAuth ficam registrados no metadata da conexão.</p>
+                    </div>
+
+                    <div className="connection-actions">
+                      {isMercadoConfigured && (
+                        <button type="button" className="btn btn-secondary" onClick={() => { setShowMercadoForm(false); setMercadoClientSecret(""); }}>
+                          Cancelar
+                        </button>
+                      )}
+                      <button className="btn btn-mercado" disabled={mercadoLoading}>
+                        {mercadoLoading ? "Salvando..." : "Salvar Mercado Livre"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            </div>
+
+            <div className="connection-note">
+              <strong>Como fica no banco:</strong> cada usuário tem uma linha por marketplace e tipo de conexão. Os identificadores ficam disponíveis para a aplicação, enquanto Secrets são armazenados criptografados. O Mercado Livre fica com status <strong>pending</strong> até concluirmos a autorização OAuth da conta.
             </div>
           </div>
         ) : (
           <div className="offers-view">
             <section className="metric-row">
               <div className="metric-card">
-                <span>Marketplace ativo</span>
+                <span>Fonte de ofertas</span>
                 <strong>Shopee</strong>
                 <small>Affiliate Open API</small>
               </div>
               <div className="metric-card">
-                <span>Status da conexão</span>
-                <strong className={isShopeeConnected ? "success-text" : "danger-text"}>{isShopeeConnected ? "Conectada" : "Pendente"}</strong>
-                <small>{isShopeeConnected ? "Pronta para buscar" : "Configure em Conexões"}</small>
+                <span>Integrações configuradas</span>
+                <strong>{configuredCount}/2</strong>
+                <small>Shopee + Mercado Livre</small>
               </div>
               <div className="metric-card">
                 <span>Ofertas na tela</span>
                 <strong>{offers.length}</strong>
-                <small>Ordenadas por score</small>
+                <small>Melhores produtos encontrados</small>
               </div>
             </section>
 
@@ -603,8 +779,8 @@ export default function Home() {
               <section className="connect-banner">
                 <div className="market-logo shopee-logo">S</div>
                 <div>
-                  <strong>Conecte a Shopee para começar</strong>
-                  <p>O painel agora trabalha com a API real de afiliados e precisa das suas credenciais.</p>
+                  <strong>Conecte a Shopee para buscar ofertas</strong>
+                  <p>O Mercado Livre pode ser configurado agora, mas a busca atual continua usando a Shopee.</p>
                 </div>
                 <button className="btn btn-shopee" onClick={() => setActiveView("connections")}>Ir para Conexões</button>
               </section>
@@ -614,39 +790,27 @@ export default function Home() {
               <div className="search-card-head">
                 <div>
                   <span className="kicker">Radar de produtos</span>
-                  <h2>O que vamos procurar hoje?</h2>
-                  <p>A Shopee retorna produto, preço, comissão e link afiliado em uma única busca.</p>
+                  <h2>Qual produto vamos procurar?</h2>
+                  <p>Digite a palavra-chave. O sistema filtra e ordena automaticamente os produtos mais fortes.</p>
                 </div>
                 <span className="api-badge"><span /> Shopee API</span>
               </div>
 
-              <div className="search-grid">
+              <div className="search-grid compact-search-grid">
                 <label className="wide-field">
                   Palavra-chave
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ex.: air fryer, ferramentas, beleza, gamer" />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ex.: fone bluetooth, air fryer, ferramentas" />
                 </label>
                 <label>
                   Nicho salvo
                   <select value={selectedNicheId} onChange={(e) => {
                     setSelectedNicheId(e.target.value);
                     const item = niches.find((niche) => niche.id === e.target.value);
-                    if (item) {
-                      setQuery(item.name);
-                      setMinDiscount(item.min_discount);
-                      setMinScore(item.min_score);
-                    }
+                    if (item) setQuery(item.name);
                   }}>
                     <option value="">Sem nicho</option>
                     {niches.map((niche) => <option key={niche.id} value={niche.id}>{niche.name}</option>)}
                   </select>
-                </label>
-                <label>
-                  Desconto mínimo
-                  <div className="suffix-input"><input type="number" min="0" max="100" value={minDiscount} onChange={(e) => setMinDiscount(e.target.value)} /><span>%</span></div>
-                </label>
-                <label>
-                  Score mínimo
-                  <div className="suffix-input"><input type="number" min="0" max="100" value={minScore} onChange={(e) => setMinScore(e.target.value)} /><span>/100</span></div>
                 </label>
               </div>
 
@@ -656,7 +820,7 @@ export default function Home() {
                   <button className="btn btn-secondary" onClick={createNiche} type="button">Salvar nicho</button>
                 </div>
                 <button className="btn btn-shopee search-button" onClick={searchOffers} disabled={searchLoading || query.trim().length < 2 || !isShopeeConnected}>
-                  {searchLoading ? "Buscando na Shopee..." : "Buscar ofertas"}
+                  {searchLoading ? "Buscando melhores produtos..." : "Buscar melhores produtos"}
                 </button>
               </div>
             </section>
@@ -668,7 +832,7 @@ export default function Home() {
                 <div>
                   <span className="kicker">Resultados</span>
                   <h2>Melhores oportunidades</h2>
-                  <p>{offers.length ? `${offers.length} produtos encontrados depois dos filtros.` : "Faça uma busca para preencher o radar."}</p>
+                  <p>{offers.length ? `${offers.length} produtos qualificados e ordenados por oportunidade.` : "Faça uma busca para preencher o radar."}</p>
                 </div>
                 {selectedNiche && <span className="niche-pill">{selectedNiche.name}</span>}
               </div>
@@ -682,6 +846,7 @@ export default function Home() {
                     </div>
                     <div className="offer-content">
                       <div className="offer-badges">
+                        {offer.qualityLabel && <span className="commission-pill">{offer.qualityLabel}</span>}
                         {offer.discountPercent > 0 && <span className="discount-pill">-{Math.round(offer.discountPercent)}%</span>}
                         {offer.commissionRate > 0 && <span className="commission-pill">Comissão {offer.commissionRate}%</span>}
                       </div>
@@ -712,7 +877,7 @@ export default function Home() {
               <div>
                 <span className="kicker">Robô 2</span>
                 <h2>Oferta pronta para usar</h2>
-                <p>O link abaixo já veio da API de afiliados da Shopee.</p>
+                <p>O link abaixo veio da API de afiliados da Shopee.</p>
               </div>
               <button className="close-button" onClick={() => setSelectedOffer(null)}>×</button>
             </div>
@@ -728,7 +893,7 @@ export default function Home() {
             <label>
               Link de afiliado
               <input value={affiliateUrl} onChange={(e) => updateAffiliateUrl(e.target.value)} />
-              <small>Você ainda pode editar o link antes de gerar a divulgação final.</small>
+              <small>Você ainda pode editar o link antes da divulgação final.</small>
             </label>
 
             <label>
