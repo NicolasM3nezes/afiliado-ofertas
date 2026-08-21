@@ -26,10 +26,13 @@ if ($nodeMajor -lt 22) {
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 $envPath = Join-Path $projectRoot ".env.local"
+$backupPath = Join-Path $projectRoot ".env.local.backup"
 
 $currentEnv = ""
+$backupEnv = ""
 $mlToken = ""
 $encryptionKey = ""
+$previousEncryptionKey = ""
 
 if (Test-Path $envPath) {
     $currentEnv = Get-Content -Path $envPath -Raw
@@ -38,6 +41,23 @@ if (Test-Path $envPath) {
     }
     if ($currentEnv -match '(?m)^APP_ENCRYPTION_KEY=(.+)$') {
         $encryptionKey = $matches[1].Trim()
+    }
+    if ($currentEnv -match '(?m)^APP_ENCRYPTION_KEY_PREVIOUS=(.+)$') {
+        $previousEncryptionKey = $matches[1].Trim()
+    }
+}
+
+if (Test-Path $backupPath) {
+    $backupEnv = Get-Content -Path $backupPath -Raw
+    if ($backupEnv -match '(?m)^APP_ENCRYPTION_KEY=(.+)$') {
+        $backupKey = $matches[1].Trim()
+        if ([string]::IsNullOrWhiteSpace($encryptionKey)) {
+            $encryptionKey = $backupKey
+            Write-Host "Chave de criptografia recuperada do backup." -ForegroundColor Green
+        } elseif ($backupKey -ne $encryptionKey -and [string]::IsNullOrWhiteSpace($previousEncryptionKey)) {
+            $previousEncryptionKey = $backupKey
+            Write-Host "Chave anterior encontrada no backup para recuperar credenciais existentes." -ForegroundColor Yellow
+        }
     }
 }
 
@@ -54,12 +74,13 @@ $envContent = @"
 NEXT_PUBLIC_SUPABASE_URL=https://flicyhbmovfvmvzoilzh.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_8rwFdzOqo0MIuJqi-qqNkg_OeZqvuJI
 APP_ENCRYPTION_KEY=$encryptionKey
+APP_ENCRYPTION_KEY_PREVIOUS=$previousEncryptionKey
 MERCADO_LIVRE_ACCESS_TOKEN=$mlToken
 ALLOW_DEMO_OFFERS=true
 "@
 
 if (Test-Path $envPath) {
-    Copy-Item -Path $envPath -Destination (Join-Path $projectRoot ".env.local.backup") -Force
+    Copy-Item -Path $envPath -Destination $backupPath -Force
 }
 Set-Content -Path $envPath -Value $envContent -Encoding UTF8
 Write-Host ".env.local configurado para o projeto afiliado-ofertas." -ForegroundColor Green
