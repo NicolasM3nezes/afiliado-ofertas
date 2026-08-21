@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { decryptSecret, encryptSecret } from "@/lib/crypto-secret";
 import { getAuthenticatedServerClient } from "@/lib/server-auth";
@@ -10,6 +11,8 @@ import { enrichMercadoLivreAffiliateOffers } from "@/lib/marketplaces/mercado-li
 
 const VALID_PLATFORMS = new Set(["all", "shopee", "mercado-livre"]);
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const SEARCH_TIMEOUT_MS = 25 * 1000;
+const MAX_QUERY_LENGTH = 120;
 
 function rankOffers(a, b) {
   if (b.score !== a.score) return b.score - a.score;
@@ -67,6 +70,36 @@ function wantsPlatform(filter, slug) {
   return filter === "all" || filter === slug;
 }
 
+function platformLabel(slug) {
+  return slug === "mercado-livre" ? "Mercado Livre" : "Shopee";
+}
+
+function runPlatformSearch(slug, task) {
+  let timeoutId;
+  const timeout = new Promise((resolve) => {
+    timeoutId = setTimeout(() => {
+      resolve({
+        slug,
+        ok: false,
+        offers: [],
+        timedOut: true,
+        warning: `${platformLabel(slug)} excedeu ${Math.round(SEARCH_TIMEOUT_MS / 1000)}s nesta busca. A outra plataforma continuou normalmente.`,
+      });
+    }, SEARCH_TIMEOUT_MS);
+  });
+
+  const execution = Promise.resolve()
+    .then(task)
+    .catch((error) => ({
+      slug,
+      ok: false,
+      offers: [],
+      warning: error?.message || `Falha ao consultar ${platformLabel(slug)}.`,
+    }));
+
+  return Promise.race([execution, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
 function decryptStoredValue(connection, prefix) {
   const encryptedSecret = connection[`${prefix}_encrypted`];
   const secretIv = connection[`${prefix}_iv`];
@@ -102,6 +135,11 @@ async function searchShopee(connection, query) {
     slug: "shopee",
     ok: true,
     offers,
+    diagnostics: {
+      pagesFetched: result.pagesFetched,
+      totalFetched: result.totalFetched,
+      truncated: result.truncated,
+    },
     warning: result.truncated && offers.length < 10
       ? "A Shopee encerrou a paginação de segurança antes de formar uma lista grande; mantivemos os melhores produtos encontrados."
       : null,
@@ -226,6 +264,7 @@ async function searchMercadoLivre(connection, query, supabase) {
       ok: false,
       offers: [],
       warning: `Não foi possível buscar produtos reais do Mercado Livre. ${result.warning || ""}`.trim(),
+      diagnostics: result.diagnostics || null,
     };
   }
 
@@ -246,11 +285,60 @@ async function searchMercadoLivre(connection, query, supabase) {
     slug: "mercado-livre",
     ok: true,
     offers,
+    diagnostics: result.diagnostics || null,
     warning: warnings.join(" ") || null,
   };
 }
 
+async function recordSearchRuns({ supabase, results, query, platform, startedAt, requestId }) {
+  const slugs = results
+    .map((result) => result.slug)
+    .filter((slug) => slug === "shopee" || slug === "mercado-livre");
+  if (!slugs.length) return;
+
+  try {
+    const { data: marketplaces, error: marketplaceError } = await supabase
+      .from("marketplaces")
+      .select("id,slug")
+      .in("slug", slugs);
+    if (marketplaceError) throw marketplaceError;
+
+    const ids = new Map((marketplaces || []).map((item) => [item.slug, item.id]));
+    const completedAt = new Date();
+    const durationMs = Math.max(completedAt.getTime() - startedAt.getTime(), 0);
+
+    const rows = results
+      .filter((result) => ids.has(result.slug))
+      .map((result) => ({
+        marketplace_id: ids.get(result.slug),
+        niche_id: null,
+        query,
+        filters: {
+          platform_filter: platform,
+          request_id: requestId,
+          duration_ms: durationMs,
+          timed_out: Boolean(result.timedOut),
+          diagnostics: result.diagnostics || null,
+        },
+        total_found: Array.isArray(result.offers) ? result.offers.length : 0,
+        status: result.ok ? "completed" : "failed",
+        error_message: result.ok ? null : String(result.warning || "Falha na busca.").slice(0, 500),
+        started_at: startedAt.toISOString(),
+        completed_at: completedAt.toISOString(),
+      }));
+
+    if (!rows.length) return;
+    const { error } = await supabase.from("search_runs").insert(rows);
+    if (error) throw error;
+  } catch (error) {
+    console.error("Falha ao registrar histórico de busca:", error?.message || error);
+  }
+}
+
 export async function GET(request) {
+  const startedAt = new Date();
+  const requestId = crypto.randomUUID();
+
   try {
     const { supabase } = await getAuthenticatedServerClient(request);
     const { searchParams } = new URL(request.url);
@@ -258,10 +346,13 @@ export async function GET(request) {
     const platform = String(searchParams.get("platform") || "all").trim().toLowerCase();
 
     if (query.length < 2) {
-      return NextResponse.json({ error: "Informe pelo menos 2 caracteres para buscar." }, { status: 400 });
+      return NextResponse.json({ error: "Informe pelo menos 2 caracteres para buscar.", requestId }, { status: 400 });
+    }
+    if (query.length > MAX_QUERY_LENGTH) {
+      return NextResponse.json({ error: `A busca aceita no máximo ${MAX_QUERY_LENGTH} caracteres.`, requestId }, { status: 400 });
     }
     if (!VALID_PLATFORMS.has(platform)) {
-      return NextResponse.json({ error: "Filtro de plataforma inválido." }, { status: 400 });
+      return NextResponse.json({ error: "Filtro de plataforma inválido.", requestId }, { status: 400 });
     }
 
     const { data: connections, error } = await supabase
@@ -278,29 +369,35 @@ export async function GET(request) {
     );
 
     const tasks = [];
-    if (wantsPlatform(platform, "shopee")) tasks.push(searchShopee(shopeeConnection, query));
-    if (wantsPlatform(platform, "mercado-livre")) tasks.push(searchMercadoLivre(mercadoConnection, query, supabase));
+    if (wantsPlatform(platform, "shopee")) {
+      tasks.push(runPlatformSearch("shopee", () => searchShopee(shopeeConnection, query)));
+    }
+    if (wantsPlatform(platform, "mercado-livre")) {
+      tasks.push(runPlatformSearch("mercado-livre", () => searchMercadoLivre(mercadoConnection, query, supabase)));
+    }
 
-    const settled = await Promise.allSettled(tasks);
-    const results = settled.map((entry) => {
-      if (entry.status === "fulfilled") return entry.value;
-      return {
-        slug: "unknown",
-        ok: false,
-        offers: [],
-        warning: entry.reason?.message || "Uma das plataformas falhou durante a busca.",
-      };
-    });
-
+    const results = await Promise.all(tasks);
     const offers = results.flatMap((result) => result.offers || []).sort(rankOffers).slice(0, 80);
     const counts = {
       shopee: offers.filter((offer) => offer.marketplaceSlug === "shopee").length,
       mercadoLivre: offers.filter((offer) => offer.marketplaceSlug === "mercado-livre").length,
     };
     const warnings = results.map((result) => result.warning).filter(Boolean);
+    const durationMs = Math.max(Date.now() - startedAt.getTime(), 0);
+
+    await recordSearchRuns({
+      supabase,
+      results,
+      query,
+      platform,
+      startedAt,
+      requestId,
+    });
 
     return NextResponse.json({
       source: "multi_marketplace",
+      requestId,
+      durationMs,
       platform,
       count: offers.length,
       counts,
@@ -310,12 +407,17 @@ export async function GET(request) {
       sources: results.map((result) => ({
         slug: result.slug,
         ok: result.ok,
+        timedOut: Boolean(result.timedOut),
         count: result.offers?.length || 0,
+        diagnostics: result.diagnostics || null,
       })),
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error?.message || "Falha ao executar a busca geral." },
+      {
+        error: error?.message || "Falha ao executar a busca geral.",
+        requestId,
+      },
       { status: error?.status || 500 }
     );
   }
