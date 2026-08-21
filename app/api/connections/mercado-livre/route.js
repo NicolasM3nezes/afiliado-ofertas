@@ -76,8 +76,9 @@ export async function POST(request) {
     const metadata = {
       redirect_uri: redirectUri,
       pkce: true,
-      oauth_flows: ["authorization_code", "refresh_token"],
+      oauth_flows: ["authorization_code", "refresh_token", "client_credentials"],
       business_unit: "mercado_livre",
+      search_enabled: true,
       configured_at: now,
     };
 
