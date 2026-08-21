@@ -25,6 +25,7 @@ const NAV_SECTIONS = [
   {
     label: "Produção",
     items: [
+      { key: "publish", href: "/groups/publish", icon: "✦", label: "Publicar oferta", description: "Foto + legenda + link", featured: true },
       { key: "creative", href: "/groups/creative", icon: "▣", label: "Criativos", description: "Cards para oferta" },
       { key: "history", href: "/history", icon: "◫", label: "Histórico", description: "Buscas e publicações" },
     ],
@@ -44,6 +45,7 @@ const PAGE_META = {
   "/groups/today": { eyebrow: "Fluxo diário", title: "Operação do Dia" },
   "/groups/radar": { eyebrow: "Descoberta segmentada", title: "Radar do Grupo" },
   "/groups/setup": { eyebrow: "Comece rápido", title: "Configuração rápida" },
+  "/groups/publish": { eyebrow: "Produção", title: "Publicar oferta" },
   "/groups/creative": { eyebrow: "Produção", title: "Criativos" },
   "/groups/insights": { eyebrow: "Análise", title: "Insights" },
   "/groups/health": { eyebrow: "Monitoramento", title: "Central de problemas" },
