@@ -34,7 +34,6 @@ function platformInfo(slug) {
       name: "Mercado Livre",
       short: "ML",
       badgeClass: "marketplace-badge mercado-badge",
-      logoClass: "market-logo ml-logo",
     };
   }
 
@@ -42,7 +41,6 @@ function platformInfo(slug) {
     name: "Shopee",
     short: "S",
     badgeClass: "marketplace-badge shopee-badge",
-    logoClass: "market-logo shopee-logo",
   };
 }
 
@@ -106,6 +104,18 @@ export default function DashboardClient() {
     loadNiches();
     loadShopeeConnection();
     loadMercadoConnection();
+
+    const params = new URLSearchParams(window.location.search);
+    const mercadoStatus = params.get("mercado");
+    if (mercadoStatus === "connected") {
+      setActiveView("connections");
+      showToast("Mercado Livre conectado com sucesso.");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (mercadoStatus === "error") {
+      setActiveView("connections");
+      showToast(params.get("mercado_message") || "Falha ao conectar Mercado Livre.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, session]);
 
@@ -118,12 +128,13 @@ export default function DashboardClient() {
   const isMercadoConfigured = Boolean(mercadoConnection);
   const isMercadoConnected = mercadoConnection?.status === "connected";
   const configuredCount = Number(isShopeeConnected) + Number(isMercadoConfigured);
-  const hasAnySearchSource = isShopeeConnected || isMercadoConfigured;
+  const connectedCount = Number(isShopeeConnected) + Number(isMercadoConnected);
+  const hasAnySearchSource = isShopeeConnected || isMercadoConnected;
   const selectedSourceAvailable = platformFilter === "all"
     ? hasAnySearchSource
     : platformFilter === "shopee"
       ? isShopeeConnected
-      : isMercadoConfigured;
+      : isMercadoConnected;
 
   function apiHeaders() {
     return {
@@ -134,7 +145,7 @@ export default function DashboardClient() {
 
   function showToast(message) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 3200);
+    window.setTimeout(() => setToast(""), 4200);
   }
 
   async function loadNiches() {
@@ -198,7 +209,6 @@ export default function DashboardClient() {
       setAuthMessage(error.message);
       return;
     }
-
     if (authMode === "signup" && !data.session) {
       setAuthMessage("Cadastro criado. Confirme o e-mail para entrar.");
     }
@@ -274,10 +284,26 @@ export default function DashboardClient() {
       setMercadoConnection(data.connection);
       setMercadoClientSecret("");
       setShowMercadoForm(false);
-      showToast("Configuração do Mercado Livre salva no banco.");
+      showToast("Aplicação Mercado Livre salva. Agora autorize sua conta.");
     } catch (error) {
       showToast(error.message);
     } finally {
+      setMercadoLoading(false);
+    }
+  }
+
+  async function connectMercadoAccount() {
+    setMercadoLoading(true);
+    try {
+      const response = await fetch("/api/connections/mercado-livre/authorize", {
+        method: "POST",
+        headers: apiHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível iniciar o OAuth do Mercado Livre.");
+      window.location.assign(data.authorizationUrl);
+    } catch (error) {
+      showToast(error.message);
       setMercadoLoading(false);
     }
   }
@@ -294,6 +320,7 @@ export default function DashboardClient() {
       setMercadoConnection(null);
       setMercadoClientSecret("");
       setShowMercadoForm(true);
+      if (platformFilter === "mercado-livre") setPlatformFilter("all");
       showToast("Configuração do Mercado Livre removida do banco.");
     } catch (error) {
       showToast(error.message);
@@ -334,7 +361,9 @@ export default function DashboardClient() {
   async function searchOffers() {
     if (!selectedSourceAvailable) {
       setActiveView("connections");
-      showToast("Configure a plataforma selecionada antes de buscar.");
+      showToast(platformFilter === "mercado-livre"
+        ? "Autorize sua conta do Mercado Livre antes de buscar."
+        : "Conecte pelo menos uma plataforma antes de buscar.");
       return;
     }
 
@@ -355,11 +384,9 @@ export default function DashboardClient() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Falha ao buscar ofertas.");
-
       setOffers(data.offers || []);
       setResultCounts(data.counts || { shopee: 0, mercadoLivre: 0 });
       setSearchWarning(data.warning || "");
-
       if (!data.offers?.length && !data.warning) {
         setSearchWarning("Nenhum produto forte com desconto foi encontrado para essa palavra-chave.");
       }
@@ -379,9 +406,7 @@ export default function DashboardClient() {
 
   function updateAffiliateUrl(value) {
     setAffiliateUrl(value);
-    if (selectedOffer) {
-      setPreparedMessage(buildOfferMessage({ offer: selectedOffer, affiliateUrl: value }));
-    }
+    if (selectedOffer) setPreparedMessage(buildOfferMessage({ offer: selectedOffer, affiliateUrl: value }));
   }
 
   async function persistPreparedOffer() {
@@ -449,7 +474,6 @@ export default function DashboardClient() {
           message_text: preparedMessage,
         });
       if (messageError) throw messageError;
-
       showToast("Oferta e mensagem salvas.");
     } catch (error) {
       showToast(error.message || "Falha ao salvar.");
@@ -464,8 +488,7 @@ export default function DashboardClient() {
   }
 
   function openWhatsApp() {
-    const url = `https://wa.me/?text=${encodeURIComponent(preparedMessage)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(`https://wa.me/?text=${encodeURIComponent(preparedMessage)}`, "_blank", "noopener,noreferrer");
   }
 
   if (bootError) {
@@ -487,10 +510,7 @@ export default function DashboardClient() {
         <section className="auth-card">
           <div className="auth-brand">
             <div className="logo-mark">A</div>
-            <div>
-              <strong>Afiliado Ofertas</strong>
-              <span>Seu radar de oportunidades</span>
-            </div>
+            <div><strong>Afiliado Ofertas</strong><span>Seu radar de oportunidades</span></div>
           </div>
           <div className="auth-copy">
             <span className="kicker">Automação para afiliados</span>
@@ -498,22 +518,12 @@ export default function DashboardClient() {
             <p>Pesquise produtos em múltiplos marketplaces e prepare sua divulgação.</p>
           </div>
           <form onSubmit={handleAuth} className="auth-form">
-            <label>
-              E-mail
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </label>
-            <label>
-              Senha
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
-            </label>
-            <button className="btn btn-primary" disabled={authLoading}>
-              {authLoading ? "Aguarde..." : authMode === "login" ? "Entrar no painel" : "Criar minha conta"}
-            </button>
+            <label>E-mail<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+            <label>Senha<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required /></label>
+            <button className="btn btn-primary" disabled={authLoading}>{authLoading ? "Aguarde..." : authMode === "login" ? "Entrar no painel" : "Criar minha conta"}</button>
           </form>
           {authMessage && <div className="inline-alert">{authMessage}</div>}
-          <button className="link-button" onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}>
-            {authMode === "login" ? "Primeiro acesso? Criar conta" : "Já tenho uma conta"}
-          </button>
+          <button className="link-button" onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}>{authMode === "login" ? "Primeiro acesso? Criar conta" : "Já tenho uma conta"}</button>
         </section>
       </main>
     );
@@ -525,19 +535,11 @@ export default function DashboardClient() {
         <div>
           <div className="sidebar-brand">
             <div className="logo-mark small">A</div>
-            <div>
-              <strong>Afiliado Ofertas</strong>
-              <span>Central de afiliados</span>
-            </div>
+            <div><strong>Afiliado Ofertas</strong><span>Central de afiliados</span></div>
           </div>
           <nav className="side-nav">
-            <button className={activeView === "offers" ? "side-item active" : "side-item"} onClick={() => setActiveView("offers")}>
-              <span className="side-icon">⌁</span><span>Encontrar ofertas</span>
-            </button>
-            <button className={activeView === "connections" ? "side-item active" : "side-item"} onClick={() => setActiveView("connections")}>
-              <span className="side-icon">↗</span><span>Conexões</span>
-              <span className={configuredCount > 0 ? "nav-dot online" : "nav-dot"} />
-            </button>
+            <button className={activeView === "offers" ? "side-item active" : "side-item"} onClick={() => setActiveView("offers")}><span className="side-icon">⌁</span><span>Encontrar ofertas</span></button>
+            <button className={activeView === "connections" ? "side-item active" : "side-item"} onClick={() => setActiveView("connections")}><span className="side-icon">↗</span><span>Conexões</span><span className={connectedCount > 0 ? "nav-dot online" : "nav-dot"} /></button>
             <button className="side-item muted-item" disabled><span className="side-icon">✦</span><span>Mensagens</span><small>em breve</small></button>
             <button className="side-item muted-item" disabled><span className="side-icon">◫</span><span>Histórico</span><small>em breve</small></button>
           </nav>
@@ -555,27 +557,23 @@ export default function DashboardClient() {
             <span className="kicker">{activeView === "connections" ? "Integrações" : "Radar multi-marketplace"}</span>
             <h1>{activeView === "connections" ? "Conexões" : "Encontrar ofertas"}</h1>
             <p>{activeView === "connections"
-              ? "Configure Shopee e Mercado Livre. As credenciais ficam salvas no Supabase."
+              ? "Configure e autorize suas plataformas. Credenciais e tokens ficam protegidos no Supabase."
               : "Pesquise Shopee e Mercado Livre juntos ou filtre apenas a plataforma que quiser."}</p>
           </div>
-          <div className="environment-pill"><span /> localhost</div>
+          <div className="environment-pill"><span /> {window.location.hostname}</div>
         </header>
 
         {activeView === "connections" ? (
           <div className="connections-view">
             <section className="connection-hero">
-              <div>
-                <span className="kicker light">Central de integrações</span>
-                <h2>Shopee + Mercado Livre</h2>
-                <p>As conexões alimentam o mesmo radar de produtos. Você escolhe a plataforma no momento da busca.</p>
-              </div>
-              <div className={configuredCount > 0 ? "big-status connected" : "big-status"}><span />{configuredCount}/2 configuradas</div>
+              <div><span className="kicker light">Central de integrações</span><h2>Shopee + Mercado Livre</h2><p>Uma plataforma só entra no radar depois de estar realmente conectada.</p></div>
+              <div className={connectedCount > 0 ? "big-status connected" : "big-status"}><span />{connectedCount}/2 conectadas</div>
             </section>
 
             <section className="connections-summary">
               <div className="connection-summary-card"><span>Shopee</span><strong className={isShopeeConnected ? "success-text" : "danger-text"}>{isShopeeConnected ? "Conectada" : "Pendente"}</strong><small>{isShopeeConnected ? "API validada" : "Informe App ID e Secret"}</small></div>
-              <div className="connection-summary-card"><span>Mercado Livre</span><strong className={isMercadoConfigured ? "success-text" : "danger-text"}>{isMercadoConnected ? "Conectado" : isMercadoConfigured ? "Configurado" : "Pendente"}</strong><small>{isMercadoConfigured ? "Aplicação salva" : "Informe credenciais"}</small></div>
-              <div className="connection-summary-card"><span>Radar</span><strong>Busca geral</strong><small>As duas plataformas no mesmo resultado</small></div>
+              <div className="connection-summary-card"><span>Mercado Livre</span><strong className={isMercadoConnected ? "success-text" : "danger-text"}>{isMercadoConnected ? "Conectado" : isMercadoConfigured ? "Falta autorizar" : "Pendente"}</strong><small>{isMercadoConnected ? "OAuth ativo" : isMercadoConfigured ? "Clique em Conectar conta" : "Informe credenciais do app"}</small></div>
+              <div className="connection-summary-card"><span>Banco</span><strong>{configuredCount}/2 apps</strong><small>Secrets e tokens criptografados</small></div>
             </section>
 
             <div className="connection-cards-grid">
@@ -611,8 +609,8 @@ export default function DashboardClient() {
               <section className="connection-card market-card">
                 <div className="connection-card-head">
                   <div className="market-logo ml-logo">ML</div>
-                  <div><h3>Mercado Livre</h3><p>API · OAuth 2.0 · Brasil</p></div>
-                  <span className={isMercadoConnected ? "status-badge connected" : isMercadoConfigured ? "status-badge configured" : "status-badge"}>{isMercadoConnected ? "Ativa" : isMercadoConfigured ? "Configurado" : "Pendente"}</span>
+                  <div><h3>Mercado Livre</h3><p>OAuth 2.0 · Authorization Code + PKCE</p></div>
+                  <span className={isMercadoConnected ? "status-badge connected" : isMercadoConfigured ? "status-badge configured" : "status-badge"}>{isMercadoConnected ? "Ativa" : isMercadoConfigured ? "Autorizar" : "Pendente"}</span>
                 </div>
                 {isMercadoConfigured && !showMercadoForm ? (
                   <div className="connected-panel">
@@ -620,9 +618,21 @@ export default function DashboardClient() {
                       <div><span>Client ID</span><strong>{mercadoConnection.account_identifier}</strong></div>
                       <div><span>Client Secret</span><strong>••••••••••••••••</strong></div>
                       <div className="wide-fact"><span>Redirect URI</span><strong>{mercadoConnection.redirect_uri}</strong></div>
+                      {isMercadoConnected && <div className="wide-fact"><span>Token válido até</span><strong>{formatDate(mercadoConnection.oauth_expires_at)}</strong></div>}
                     </div>
-                    <div className="mercado-strip"><span>✓</span><div><strong>Aplicação disponível para o radar</strong><p>A busca tenta autenticar a aplicação e consulta os produtos do Mercado Livre pelo backend.</p></div></div>
-                    <div className="connection-actions"><button className="btn btn-secondary" onClick={() => setShowMercadoForm(true)}>Atualizar</button><button className="btn btn-danger-ghost" onClick={disconnectMercado} disabled={mercadoLoading}>Remover</button></div>
+
+                    {isMercadoConnected ? (
+                      <div className="success-strip"><span>✓</span><div><strong>Conta Mercado Livre autorizada</strong><p>Access token e refresh token estão salvos criptografados e a renovação é automática.</p></div></div>
+                    ) : (
+                      <div className="mercado-strip"><span>!</span><div><strong>Falta autorizar sua conta</strong><p>As credenciais do app estão salvas, mas o Mercado Livre ainda não pode entrar na busca até concluir o OAuth.</p></div></div>
+                    )}
+
+                    <div className="connection-actions">
+                      {!isMercadoConnected && <button className="btn btn-mercado" onClick={connectMercadoAccount} disabled={mercadoLoading}>{mercadoLoading ? "Abrindo Mercado Livre..." : "Conectar conta Mercado Livre"}</button>}
+                      {isMercadoConnected && <button className="btn btn-mercado" onClick={connectMercadoAccount} disabled={mercadoLoading}>Reconectar conta</button>}
+                      <button className="btn btn-secondary" onClick={() => setShowMercadoForm(true)}>Atualizar app</button>
+                      <button className="btn btn-danger-ghost" onClick={disconnectMercado} disabled={mercadoLoading}>Remover</button>
+                    </div>
                   </div>
                 ) : (
                   <form className="connection-form" onSubmit={saveMercadoConnection}>
@@ -630,9 +640,9 @@ export default function DashboardClient() {
                     <div className="three-fields">
                       <label>Client ID / APP ID<input value={mercadoClientId} onChange={(e) => setMercadoClientId(e.target.value)} placeholder="Client ID" autoComplete="off" /></label>
                       <label>Client Secret<input type="password" value={mercadoClientSecret} onChange={(e) => setMercadoClientSecret(e.target.value)} placeholder="Client Secret" autoComplete="new-password" /></label>
-                      <label className="wide-field">Redirect URI<input value={mercadoRedirectUri} onChange={(e) => setMercadoRedirectUri(e.target.value)} placeholder="https://seu-dominio.com/api/mercado-livre/callback" autoComplete="off" /><small>Use exatamente a URL HTTPS cadastrada no app.</small></label>
+                      <label className="wide-field">Redirect URI<input value={mercadoRedirectUri} onChange={(e) => setMercadoRedirectUri(e.target.value)} placeholder="https://seu-dominio.com/api/mercado-livre/callback" autoComplete="off" /><small>Precisa ser a mesma URL HTTPS cadastrada no app e o painel deve estar aberto nesse mesmo domínio.</small></label>
                     </div>
-                    <div className="security-note"><span>▣</span><p>O Client Secret é criptografado antes de ser salvo no Supabase.</p></div>
+                    <div className="security-note"><span>▣</span><p>Client Secret, access token e refresh token nunca são expostos na interface.</p></div>
                     <div className="connection-actions">{isMercadoConfigured && <button type="button" className="btn btn-secondary" onClick={() => { setShowMercadoForm(false); setMercadoClientSecret(""); }}>Cancelar</button>}<button className="btn btn-mercado" disabled={mercadoLoading}>{mercadoLoading ? "Salvando..." : "Salvar Mercado Livre"}</button></div>
                   </form>
                 )}
@@ -642,7 +652,7 @@ export default function DashboardClient() {
         ) : (
           <div className="offers-view">
             <section className="metric-row">
-              <div className="metric-card"><span>Modo de busca</span><strong>{platformFilter === "all" ? "Geral" : platformFilter === "shopee" ? "Shopee" : "Mercado Livre"}</strong><small>{platformFilter === "all" ? "Duas plataformas" : "Filtro de plataforma"}</small></div>
+              <div className="metric-card"><span>Modo de busca</span><strong>{platformFilter === "all" ? "Geral" : platformFilter === "shopee" ? "Shopee" : "Mercado Livre"}</strong><small>{platformFilter === "all" ? "Plataformas conectadas" : "Filtro de plataforma"}</small></div>
               <div className="metric-card"><span>Resultados por plataforma</span><strong>{resultCounts.shopee} S · {resultCounts.mercadoLivre} ML</strong><small>Ranking combinado por oportunidade</small></div>
               <div className="metric-card"><span>Ofertas na tela</span><strong>{offers.length}</strong><small>Produtos com desconto</small></div>
             </section>
@@ -650,14 +660,14 @@ export default function DashboardClient() {
             {!hasAnySearchSource && (
               <section className="connect-banner">
                 <div className="market-logo ml-logo">+</div>
-                <div><strong>Conecte pelo menos uma plataforma</strong><p>Configure Shopee, Mercado Livre ou as duas para liberar o radar.</p></div>
+                <div><strong>Conecte pelo menos uma plataforma</strong><p>A Shopee precisa estar validada e o Mercado Livre precisa estar autorizado via OAuth.</p></div>
                 <button className="btn btn-dark" onClick={() => setActiveView("connections")}>Ir para Conexões</button>
               </section>
             )}
 
             <section className="search-card">
               <div className="search-card-head">
-                <div><span className="kicker">Radar de produtos</span><h2>Encontre os melhores produtos</h2><p>Digite a palavra-chave e escolha onde pesquisar. Em Geral, Shopee e Mercado Livre competem no mesmo ranking.</p></div>
+                <div><span className="kicker">Radar de produtos</span><h2>Encontre os melhores produtos</h2><p>Digite a palavra-chave e escolha onde pesquisar. Em Geral, as plataformas conectadas competem no mesmo ranking.</p></div>
                 <span className="api-badge multi-api-badge"><span /> Multi-marketplace</span>
               </div>
 
@@ -665,13 +675,13 @@ export default function DashboardClient() {
                 <span className="filter-label">Plataformas</span>
                 <div className="platform-segmented">
                   <button type="button" className={platformFilter === "all" ? "platform-option active" : "platform-option"} onClick={() => setPlatformFilter("all")} disabled={!hasAnySearchSource}>
-                    <span className="platform-mini-logo general-mini">+</span><span><strong>Todas</strong><small>Shopee + Mercado Livre</small></span>
+                    <span className="platform-mini-logo general-mini">+</span><span><strong>Todas</strong><small>{connectedCount} conectada(s)</small></span>
                   </button>
                   <button type="button" className={platformFilter === "shopee" ? "platform-option active shopee-option" : "platform-option shopee-option"} onClick={() => setPlatformFilter("shopee")} disabled={!isShopeeConnected}>
                     <span className="platform-mini-logo shopee-mini">S</span><span><strong>Shopee</strong><small>{isShopeeConnected ? "Conectada" : "Não conectada"}</small></span>
                   </button>
-                  <button type="button" className={platformFilter === "mercado-livre" ? "platform-option active mercado-option" : "platform-option mercado-option"} onClick={() => setPlatformFilter("mercado-livre")} disabled={!isMercadoConfigured}>
-                    <span className="platform-mini-logo mercado-mini">ML</span><span><strong>Mercado Livre</strong><small>{isMercadoConfigured ? "Configurado" : "Não configurado"}</small></span>
+                  <button type="button" className={platformFilter === "mercado-livre" ? "platform-option active mercado-option" : "platform-option mercado-option"} onClick={() => setPlatformFilter("mercado-livre")} disabled={!isMercadoConnected}>
+                    <span className="platform-mini-logo mercado-mini">ML</span><span><strong>Mercado Livre</strong><small>{isMercadoConnected ? "Conectado" : isMercadoConfigured ? "Falta autorizar" : "Não configurado"}</small></span>
                   </button>
                 </div>
               </div>
@@ -683,7 +693,7 @@ export default function DashboardClient() {
 
               <div className="search-footer">
                 <div className="save-niche-line"><input value={newNiche} onChange={(e) => setNewNiche(e.target.value)} placeholder="Nome para salvar este nicho" /><button className="btn btn-secondary" onClick={createNiche} type="button">Salvar nicho</button></div>
-                <button className="btn btn-dark search-button" onClick={searchOffers} disabled={searchLoading || query.trim().length < 2 || !selectedSourceAvailable}>{searchLoading ? "Buscando nas plataformas..." : platformFilter === "all" ? "Buscar em Shopee + Mercado Livre" : `Buscar no ${platformFilter === "shopee" ? "Shopee" : "Mercado Livre"}`}</button>
+                <button className="btn btn-dark search-button" onClick={searchOffers} disabled={searchLoading || query.trim().length < 2 || !selectedSourceAvailable}>{searchLoading ? "Buscando nas plataformas..." : platformFilter === "all" ? "Buscar nas plataformas conectadas" : `Buscar no ${platformFilter === "shopee" ? "Shopee" : "Mercado Livre"}`}</button>
               </div>
             </section>
 
@@ -735,14 +745,14 @@ export default function DashboardClient() {
           <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setSelectedOffer(null)}>
             <section className="prepare-modal">
               <div className="prepare-modal-head">
-                <div><span className="kicker">Robô 2 · {selectedPlatform.name}</span><h2>Oferta pronta para usar</h2><p>{isMercado ? "A busca traz o link do produto do Mercado Livre. Se você já tiver o link de afiliado, substitua abaixo antes de divulgar." : "O link abaixo veio da API de afiliados da Shopee."}</p></div>
+                <div><span className="kicker">Robô 2 · {selectedPlatform.name}</span><h2>Oferta pronta para usar</h2><p>{isMercado ? "A busca traz o link do produto do Mercado Livre. Você pode substituir pelo seu link de afiliado antes de divulgar." : "O link abaixo veio da API de afiliados da Shopee."}</p></div>
                 <button className="close-button" onClick={() => setSelectedOffer(null)}>×</button>
               </div>
               <div className="selected-product">
                 {selectedOffer.thumbnailUrl && <img src={selectedOffer.thumbnailUrl} alt="" />}
                 <div><span className={selectedPlatform.badgeClass}><b>{selectedPlatform.short}</b>{selectedPlatform.name}</span><strong>{selectedOffer.title}</strong><span>{money(selectedOffer.price)} · score {selectedOffer.score}/100{selectedOffer.commissionRate > 0 ? ` · comissão ${selectedOffer.commissionRate}%` : ""}</span></div>
               </div>
-              <label>{isMercado ? "Link para divulgação" : "Link de afiliado"}<input value={affiliateUrl} onChange={(e) => updateAffiliateUrl(e.target.value)} /><small>{isMercado ? "Troque pelo seu link de afiliado do Mercado Livre quando necessário." : "Você ainda pode editar o link antes da divulgação final."}</small></label>
+              <label>{isMercado ? "Link para divulgação" : "Link de afiliado"}<input value={affiliateUrl} onChange={(e) => updateAffiliateUrl(e.target.value)} /><small>{isMercado ? "Se você gerar um link afiliado do Mercado Livre, cole aqui antes de divulgar." : "Você ainda pode editar o link antes da divulgação final."}</small></label>
               <label>Mensagem pronta<textarea rows="12" value={preparedMessage} onChange={(e) => setPreparedMessage(e.target.value)} /></label>
               <div className="modal-actions-new"><button className="btn btn-secondary" onClick={persistPreparedOffer} disabled={prepareLoading}>{prepareLoading ? "Salvando..." : "Salvar oferta"}</button><button className="btn btn-dark" onClick={copyMessage}>Copiar mensagem</button><button className="btn btn-whatsapp" onClick={openWhatsApp}>Abrir WhatsApp</button></div>
             </section>

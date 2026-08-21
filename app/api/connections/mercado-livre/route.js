@@ -29,7 +29,7 @@ export async function GET(request) {
     const { supabase } = await getAuthenticatedServerClient(request);
     const { data, error } = await supabase
       .from("marketplace_connections")
-      .select("account_identifier,status,last_tested_at,last_error,metadata,updated_at")
+      .select("account_identifier,status,last_tested_at,last_error,metadata,updated_at,oauth_expires_at,oauth_connected_at")
       .eq("marketplace_slug", "mercado-livre")
       .eq("connection_type", "oauth_app")
       .maybeSingle();
@@ -47,6 +47,9 @@ export async function GET(request) {
             last_error: data.last_error,
             redirect_uri: data.metadata?.redirect_uri || "",
             pkce: data.metadata?.pkce !== false,
+            provider_user_id: data.metadata?.provider_user_id || null,
+            oauth_expires_at: data.oauth_expires_at,
+            oauth_connected_at: data.oauth_connected_at,
             updated_at: data.updated_at,
           }
         : null,
@@ -76,9 +79,8 @@ export async function POST(request) {
     const metadata = {
       redirect_uri: redirectUri,
       pkce: true,
-      oauth_flows: ["authorization_code", "refresh_token", "client_credentials"],
+      oauth_flows: ["authorization_code", "refresh_token"],
       business_unit: "mercado_livre",
-      search_enabled: true,
       configured_at: now,
     };
 
@@ -97,6 +99,14 @@ export async function POST(request) {
         last_tested_at: null,
         last_error: null,
         metadata,
+        oauth_access_token_encrypted: null,
+        oauth_access_token_iv: null,
+        oauth_access_token_tag: null,
+        oauth_refresh_token_encrypted: null,
+        oauth_refresh_token_iv: null,
+        oauth_refresh_token_tag: null,
+        oauth_expires_at: null,
+        oauth_connected_at: null,
         updated_at: now,
       }, { onConflict: "user_id,marketplace_slug,connection_type" });
 
@@ -110,6 +120,8 @@ export async function POST(request) {
         status: "pending",
         redirect_uri: redirectUri,
         pkce: true,
+        oauth_expires_at: null,
+        oauth_connected_at: null,
         updated_at: now,
       },
     });
