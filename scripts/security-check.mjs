@@ -38,11 +38,11 @@ for (const file of tracked) {
   const checks = [
     {
       name: "APP_ENCRYPTION_KEY real",
-      regex: /^APP_ENCRYPTION_KEY=(?!GERADA_AUTOMATICAMENTE_NO_LOCALHOST\s*$)(?!\s*$).+/m,
+      regex: /^APP_ENCRYPTION_KEY=(?!GERADA_AUTOMATICAMENTE_NO_LOCALHOST\s*$)(?!\s*$)(?!\$)[^\r\n]+/m,
     },
     {
       name: "APP_ENCRYPTION_KEY_PREVIOUS preenchida",
-      regex: /^APP_ENCRYPTION_KEY_PREVIOUS=\S+/m,
+      regex: /^APP_ENCRYPTION_KEY_PREVIOUS=(?!\$)\S+/m,
     },
     {
       name: "Supabase secret key",
