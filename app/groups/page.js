@@ -12,7 +12,7 @@ const navStyle = {
   display: "flex",
   gap: 7,
   flexWrap: "wrap",
-  maxWidth: 760,
+  maxWidth: 940,
 };
 
 const linkStyle = {
@@ -33,6 +33,8 @@ export default function GroupsPage() {
       <nav style={navStyle} aria-label="Ferramentas dos grupos">
         <a style={{ ...linkStyle, background: "#202329", color: "#fff", borderColor: "#202329" }} href="/groups/today">▶ Operação do Dia</a>
         <a style={{ ...linkStyle, background: "#ff6b00", color: "#fff", borderColor: "#ff6b00" }} href="/groups/radar">⌁ Radar do Grupo</a>
+        <a style={linkStyle} href="/groups/setup">＋ Configuração rápida</a>
+        <a style={linkStyle} href="/groups/health">⚠ Problemas</a>
         <a style={linkStyle} href="/groups/creative">▣ Criativos</a>
         <a style={linkStyle} href="/groups/insights">↗ Insights</a>
       </nav>
