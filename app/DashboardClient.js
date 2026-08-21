@@ -44,6 +44,18 @@ function platformInfo(slug) {
   };
 }
 
+function commissionDescription(offer) {
+  const rate = Number(offer?.commissionRate || 0);
+  if (!rate) return "Comissão não informada para este produto";
+
+  if (offer.marketplaceSlug === "mercado-livre") {
+    const category = offer.commissionCategory ? ` · ${offer.commissionCategory}` : "";
+    return `${rate}% estimados em venda direta${category}`;
+  }
+
+  return `${rate}% pela Affiliate API da Shopee`;
+}
+
 export default function DashboardClient() {
   const [supabase, setSupabase] = useState(null);
   const [session, setSession] = useState(null);
@@ -68,6 +80,8 @@ export default function DashboardClient() {
   const [mercadoClientSecret, setMercadoClientSecret] = useState("");
   const [mercadoRedirectUri, setMercadoRedirectUri] = useState("");
   const [showMercadoForm, setShowMercadoForm] = useState(false);
+  const [mercadoAffiliateSampleUrl, setMercadoAffiliateSampleUrl] = useState("");
+  const [mercadoAffiliateSaving, setMercadoAffiliateSaving] = useState(false);
 
   const [niches, setNiches] = useState([]);
   const [newNiche, setNewNiche] = useState("");
@@ -127,6 +141,7 @@ export default function DashboardClient() {
   const isShopeeConnected = shopeeConnection?.status === "connected";
   const isMercadoConfigured = Boolean(mercadoConnection);
   const isMercadoConnected = mercadoConnection?.status === "connected";
+  const isMercadoAffiliateConfigured = Boolean(mercadoConnection?.affiliate_tracking?.matt_word);
   const configuredCount = Number(isShopeeConnected) + Number(isMercadoConfigured);
   const connectedCount = Number(isShopeeConnected) + Number(isMercadoConnected);
   const hasAnySearchSource = isShopeeConnected || isMercadoConnected;
@@ -292,6 +307,35 @@ export default function DashboardClient() {
     }
   }
 
+  async function saveMercadoAffiliateTracking(event) {
+    event?.preventDefault();
+    if (!mercadoAffiliateSampleUrl.trim()) {
+      showToast("Cole um link completo de afiliado gerado na Central do Mercado Livre.");
+      return;
+    }
+
+    setMercadoAffiliateSaving(true);
+    try {
+      const response = await fetch("/api/connections/mercado-livre/affiliate", {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({ sampleUrl: mercadoAffiliateSampleUrl.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível configurar o link de afiliado.");
+
+      setMercadoConnection((current) => current
+        ? { ...current, affiliate_tracking: data.tracking }
+        : current);
+      setMercadoAffiliateSampleUrl("");
+      showToast("Rastreamento de afiliado do Mercado Livre salvo no banco.");
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setMercadoAffiliateSaving(false);
+    }
+  }
+
   async function connectMercadoAccount() {
     setMercadoLoading(true);
     try {
@@ -319,6 +363,7 @@ export default function DashboardClient() {
       if (!response.ok) throw new Error(data.error || "Falha ao remover Mercado Livre.");
       setMercadoConnection(null);
       setMercadoClientSecret("");
+      setMercadoAffiliateSampleUrl("");
       setShowMercadoForm(true);
       if (platformFilter === "mercado-livre") setPlatformFilter("all");
       showToast("Configuração do Mercado Livre removida do banco.");
@@ -388,7 +433,7 @@ export default function DashboardClient() {
       setResultCounts(data.counts || { shopee: 0, mercadoLivre: 0 });
       setSearchWarning(data.warning || "");
       if (!data.offers?.length && !data.warning) {
-        setSearchWarning("Nenhum produto forte com desconto foi encontrado para essa palavra-chave.");
+        setSearchWarning("Nenhum produto forte foi encontrado para essa palavra-chave.");
       }
     } catch (error) {
       setSearchWarning(error.message);
@@ -572,7 +617,7 @@ export default function DashboardClient() {
 
             <section className="connections-summary">
               <div className="connection-summary-card"><span>Shopee</span><strong className={isShopeeConnected ? "success-text" : "danger-text"}>{isShopeeConnected ? "Conectada" : "Pendente"}</strong><small>{isShopeeConnected ? "API validada" : "Informe App ID e Secret"}</small></div>
-              <div className="connection-summary-card"><span>Mercado Livre</span><strong className={isMercadoConnected ? "success-text" : "danger-text"}>{isMercadoConnected ? "Conectado" : isMercadoConfigured ? "Falta autorizar" : "Pendente"}</strong><small>{isMercadoConnected ? "OAuth ativo" : isMercadoConfigured ? "Clique em Conectar conta" : "Informe credenciais do app"}</small></div>
+              <div className="connection-summary-card"><span>Mercado Livre</span><strong className={isMercadoConnected ? "success-text" : "danger-text"}>{isMercadoConnected ? "Conectado" : isMercadoConfigured ? "Falta autorizar" : "Pendente"}</strong><small>{isMercadoConnected ? (isMercadoAffiliateConfigured ? "OAuth + afiliado" : "OAuth ativo · falta link afiliado") : isMercadoConfigured ? "Clique em Conectar conta" : "Informe credenciais do app"}</small></div>
               <div className="connection-summary-card"><span>Banco</span><strong>{configuredCount}/2 apps</strong><small>Secrets e tokens criptografados</small></div>
             </section>
 
@@ -627,6 +672,23 @@ export default function DashboardClient() {
                       <div className="mercado-strip"><span>!</span><div><strong>Falta autorizar sua conta</strong><p>As credenciais do app estão salvas, mas o Mercado Livre ainda não pode entrar na busca até concluir o OAuth.</p></div></div>
                     )}
 
+                    {isMercadoConnected && (
+                      <form className={`affiliate-link-setup ${isMercadoAffiliateConfigured ? "configured" : ""}`} onSubmit={saveMercadoAffiliateTracking}>
+                        <div className="affiliate-link-setup-copy">
+                          <span className="affiliate-kicker">Programa de Afiliados</span>
+                          <strong>{isMercadoAffiliateConfigured ? "Rastreamento de afiliado configurado" : "Configure a conversão automática de links"}</strong>
+                          <p>{isMercadoAffiliateConfigured
+                            ? `matt_word: ${mercadoConnection.affiliate_tracking.matt_word}${mercadoConnection.affiliate_tracking.matt_tool ? ` · matt_tool: ${mercadoConnection.affiliate_tracking.matt_tool}` : ""}`
+                            : "Na Central de Afiliados do Mercado Livre, gere qualquer produto usando Link completo e cole abaixo. O sistema extrai a identificação e aplica nos produtos encontrados."}</p>
+                        </div>
+                        <div className="affiliate-link-setup-row">
+                          <input value={mercadoAffiliateSampleUrl} onChange={(e) => setMercadoAffiliateSampleUrl(e.target.value)} placeholder={isMercadoAffiliateConfigured ? "Cole outro link completo para atualizar" : "Cole aqui um link completo de afiliado do Mercado Livre"} />
+                          <button className="btn btn-mercado" disabled={mercadoAffiliateSaving}>{mercadoAffiliateSaving ? "Salvando..." : isMercadoAffiliateConfigured ? "Atualizar afiliado" : "Salvar afiliado"}</button>
+                        </div>
+                        <small>Se o Mercado Livre gerar meli.la, selecione a opção de link completo no gerador. O link curto não contém os parâmetros que precisamos identificar.</small>
+                      </form>
+                    )}
+
                     <div className="connection-actions">
                       {!isMercadoConnected && <button className="btn btn-mercado" onClick={connectMercadoAccount} disabled={mercadoLoading}>{mercadoLoading ? "Abrindo Mercado Livre..." : "Conectar conta Mercado Livre"}</button>}
                       {isMercadoConnected && <button className="btn btn-mercado" onClick={connectMercadoAccount} disabled={mercadoLoading}>Reconectar conta</button>}
@@ -654,7 +716,7 @@ export default function DashboardClient() {
             <section className="metric-row">
               <div className="metric-card"><span>Modo de busca</span><strong>{platformFilter === "all" ? "Geral" : platformFilter === "shopee" ? "Shopee" : "Mercado Livre"}</strong><small>{platformFilter === "all" ? "Plataformas conectadas" : "Filtro de plataforma"}</small></div>
               <div className="metric-card"><span>Resultados por plataforma</span><strong>{resultCounts.shopee} S · {resultCounts.mercadoLivre} ML</strong><small>Ranking combinado por oportunidade</small></div>
-              <div className="metric-card"><span>Ofertas na tela</span><strong>{offers.length}</strong><small>Produtos com desconto</small></div>
+              <div className="metric-card"><span>Ofertas na tela</span><strong>{offers.length}</strong><small>Produtos qualificados</small></div>
             </section>
 
             {!hasAnySearchSource && (
@@ -681,7 +743,7 @@ export default function DashboardClient() {
                     <span className="platform-mini-logo shopee-mini">S</span><span><strong>Shopee</strong><small>{isShopeeConnected ? "Conectada" : "Não conectada"}</small></span>
                   </button>
                   <button type="button" className={platformFilter === "mercado-livre" ? "platform-option active mercado-option" : "platform-option mercado-option"} onClick={() => setPlatformFilter("mercado-livre")} disabled={!isMercadoConnected}>
-                    <span className="platform-mini-logo mercado-mini">ML</span><span><strong>Mercado Livre</strong><small>{isMercadoConnected ? "Conectado" : isMercadoConfigured ? "Falta autorizar" : "Não configurado"}</small></span>
+                    <span className="platform-mini-logo mercado-mini">ML</span><span><strong>Mercado Livre</strong><small>{isMercadoConnected ? (isMercadoAffiliateConfigured ? "Afiliado pronto" : "Conectado · falta afiliado") : isMercadoConfigured ? "Falta autorizar" : "Não configurado"}</small></span>
                   </button>
                 </div>
               </div>
@@ -709,6 +771,7 @@ export default function DashboardClient() {
                 {offers.map((offer) => {
                   const platform = platformInfo(offer.marketplaceSlug);
                   const hasAffiliateLink = Boolean(offer.affiliateUrl);
+                  const estimatedCommission = Number(offer.estimatedCommission || 0);
                   return (
                     <article className={`offer-card-new marketplace-card-${offer.marketplaceSlug}`} key={`${offer.marketplaceSlug}:${offer.externalId}`}>
                       <div className="offer-image">
@@ -726,7 +789,11 @@ export default function DashboardClient() {
                         <h3>{offer.title}</h3>
                         <div className="seller-line"><span>{offer.sellerName || platform.name}</span>{Number(offer.rating || 0) > 0 ? <span>★ {Number(offer.rating).toFixed(1)}</span> : <span className="platform-text-mark">{platform.name}</span>}</div>
                         <div className="price-block"><strong>{money(offer.price)}</strong>{offer.originalPrice > offer.price && <del>{money(offer.originalPrice)}</del>}</div>
-                        <div className="offer-stats"><span>{offer.soldQuantity ? `+${offer.soldQuantity.toLocaleString("pt-BR")} vendidos` : "Venda não informada"}</span><span>{hasAffiliateLink ? "Link afiliado ✓" : "Link do produto"}</span></div>
+                        <div className={`commission-estimate-card ${estimatedCommission > 0 ? "has-value" : "no-value"}`}>
+                          <div><span>Comissão estimada</span><strong>{estimatedCommission > 0 ? money(estimatedCommission) : "Sem estimativa"}</strong></div>
+                          <small>{commissionDescription(offer)}</small>
+                        </div>
+                        <div className="offer-stats"><span>{offer.soldQuantity ? `+${offer.soldQuantity.toLocaleString("pt-BR")} vendidos` : "Venda não informada"}</span><span className={hasAffiliateLink ? "affiliate-ready" : ""}>{hasAffiliateLink ? "Link afiliado ✓" : "Link do produto"}</span></div>
                         <button className="btn btn-dark full" onClick={() => openPrepare(offer)}>Usar esta oferta</button>
                       </div>
                     </article>
@@ -741,18 +808,20 @@ export default function DashboardClient() {
       {selectedOffer && (() => {
         const selectedPlatform = platformInfo(selectedOffer.marketplaceSlug);
         const isMercado = selectedOffer.marketplaceSlug === "mercado-livre";
+        const hasAffiliateLink = Boolean(selectedOffer.affiliateUrl);
+        const estimatedCommission = Number(selectedOffer.estimatedCommission || 0);
         return (
           <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setSelectedOffer(null)}>
             <section className="prepare-modal">
               <div className="prepare-modal-head">
-                <div><span className="kicker">Robô 2 · {selectedPlatform.name}</span><h2>Oferta pronta para usar</h2><p>{isMercado ? "A busca traz o link do produto do Mercado Livre. Você pode substituir pelo seu link de afiliado antes de divulgar." : "O link abaixo veio da API de afiliados da Shopee."}</p></div>
+                <div><span className="kicker">Robô 2 · {selectedPlatform.name}</span><h2>Oferta pronta para usar</h2><p>{isMercado ? (hasAffiliateLink ? "O link abaixo já recebeu o rastreamento de afiliado configurado para o Mercado Livre." : "O Mercado Livre ainda está sem rastreamento de afiliado. Configure um link completo de exemplo na aba Conexões.") : "O link abaixo veio da API de afiliados da Shopee."}</p></div>
                 <button className="close-button" onClick={() => setSelectedOffer(null)}>×</button>
               </div>
               <div className="selected-product">
                 {selectedOffer.thumbnailUrl && <img src={selectedOffer.thumbnailUrl} alt="" />}
-                <div><span className={selectedPlatform.badgeClass}><b>{selectedPlatform.short}</b>{selectedPlatform.name}</span><strong>{selectedOffer.title}</strong><span>{money(selectedOffer.price)} · score {selectedOffer.score}/100{selectedOffer.commissionRate > 0 ? ` · comissão ${selectedOffer.commissionRate}%` : ""}</span></div>
+                <div><span className={selectedPlatform.badgeClass}><b>{selectedPlatform.short}</b>{selectedPlatform.name}</span><strong>{selectedOffer.title}</strong><span>{money(selectedOffer.price)} · score {selectedOffer.score}/100{selectedOffer.commissionRate > 0 ? ` · comissão ${selectedOffer.commissionRate}%` : ""}{estimatedCommission > 0 ? ` · est. ${money(estimatedCommission)}` : ""}</span></div>
               </div>
-              <label>{isMercado ? "Link para divulgação" : "Link de afiliado"}<input value={affiliateUrl} onChange={(e) => updateAffiliateUrl(e.target.value)} /><small>{isMercado ? "Se você gerar um link afiliado do Mercado Livre, cole aqui antes de divulgar." : "Você ainda pode editar o link antes da divulgação final."}</small></label>
+              <label>{hasAffiliateLink ? "Link de afiliado" : "Link para divulgação"}<input value={affiliateUrl} onChange={(e) => updateAffiliateUrl(e.target.value)} /><small>{hasAffiliateLink ? "Link pronto para entrar na mensagem." : "Este produto ainda está usando o link normal do marketplace."}</small></label>
               <label>Mensagem pronta<textarea rows="12" value={preparedMessage} onChange={(e) => setPreparedMessage(e.target.value)} /></label>
               <div className="modal-actions-new"><button className="btn btn-secondary" onClick={persistPreparedOffer} disabled={prepareLoading}>{prepareLoading ? "Salvando..." : "Salvar oferta"}</button><button className="btn btn-dark" onClick={copyMessage}>Copiar mensagem</button><button className="btn btn-whatsapp" onClick={openWhatsApp}>Abrir WhatsApp</button></div>
             </section>
