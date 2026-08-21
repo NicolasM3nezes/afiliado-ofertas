@@ -71,12 +71,21 @@ export default function GroupHealthClient() {
 
   const issues = useMemo(() => {
     const list = [];
-    if (!shopee?.connected) {
-      list.push({ level: "critical", title: "Shopee não está pronta", detail: shopee?.connection?.last_error || shopee?.error || "Conecte ou valide novamente a Affiliate API.", href: "/", action: "Abrir Conexões" });
+    const shopeeConnected = Boolean(shopee?.connected);
+    const mercadoConnected = Boolean(mercado?.connected);
+
+    if (!shopeeConnected && !mercadoConnected) {
+      list.push({ level: "critical", title: "Nenhuma plataforma está pronta para buscar", detail: "Conecte a Shopee ou autorize o Mercado Livre para o radar e a Operação do Dia voltarem a funcionar.", href: "/", action: "Abrir Conexões" });
+    } else {
+      if (!shopeeConnected) {
+        list.push({ level: "warning", title: "Shopee está fora do radar", detail: shopee?.connection?.last_error || shopee?.error || "A operação continua com as outras plataformas, mas você está perdendo resultados da Shopee.", href: "/", action: "Revisar Shopee" });
+      }
+      if (!mercadoConnected) {
+        list.push({ level: "warning", title: "Mercado Livre está fora do radar", detail: mercado?.error || "A operação continua com as outras plataformas, mas o Mercado Livre precisa ser autorizado novamente.", href: "/", action: "Revisar Mercado Livre" });
+      }
     }
-    if (!mercado?.connected) {
-      list.push({ level: "critical", title: "Mercado Livre não está autorizado", detail: mercado?.error || "Conclua o OAuth da conta para voltar a usar o radar do Mercado Livre.", href: "/", action: "Abrir Conexões" });
-    } else if (!mercado?.affiliateConfigured) {
+
+    if (mercadoConnected && !mercado?.affiliateConfigured) {
       list.push({ level: "warning", title: "Mercado Livre sem rastreamento de afiliado", detail: "A busca funciona, mas os links podem sair sem o rastreamento da sua conta de afiliado.", href: "/", action: "Configurar afiliado" });
     }
 
@@ -136,8 +145,8 @@ export default function GroupHealthClient() {
       </section>
 
       <section className={styles.connectionRow}>
-        <div><span className={shopee?.connected ? styles.dotOk : styles.dotBad} /><strong>Shopee</strong><small>{shopee?.connected ? "Conectada e pronta" : "Precisa de atenção"}</small></div>
-        <div><span className={mercado?.connected ? styles.dotOk : styles.dotBad} /><strong>Mercado Livre</strong><small>{mercado?.connected ? (mercado?.affiliateConfigured ? "OAuth + afiliado prontos" : "OAuth pronto · afiliado pendente") : "Precisa autorizar"}</small></div>
+        <div><span className={shopeeConnectedClass(shopee)} /><strong>Shopee</strong><small>{shopee?.connected ? "Conectada e pronta" : "Fora do radar"}</small></div>
+        <div><span className={mercadoConnectedClass(mercado)} /><strong>Mercado Livre</strong><small>{mercado?.connected ? (mercado?.affiliateConfigured ? "OAuth + afiliado prontos" : "OAuth pronto · afiliado pendente") : "Fora do radar"}</small></div>
         <div><span className={groups.length ? styles.dotOk : styles.dotBad} /><strong>Grupos</strong><small>{groups.length} configurado(s)</small></div>
       </section>
 
@@ -155,4 +164,12 @@ export default function GroupHealthClient() {
       {toast && <div className={styles.toast}>{toast}</div>}
     </main>
   );
+}
+
+function shopeeConnectedClass(shopee) {
+  return shopee?.connected ? styles.dotOk : styles.dotBad;
+}
+
+function mercadoConnectedClass(mercado) {
+  return mercado?.connected ? styles.dotOk : styles.dotBad;
 }
